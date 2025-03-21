@@ -20,12 +20,14 @@ class TutorialController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
-      // Check if user exists
+      // COMMENTED OUT: User verification
+      /*
       try {
         await axios.get(`${userServiceUrl}/api/users/${req.body.createdBy}`);
       } catch (error) {
         return res.status(404).json({ error: 'User not found' });
       }
+      */
       
       // Generate S3 key
       const timestamp = Date.now();
@@ -158,9 +160,11 @@ class TutorialController {
       }
       
       // Check if user is the creator
+      /* 
       if (tutorial.createdBy !== req.body.userId) {
         return res.status(403).json({ error: 'Not authorized to update this tutorial' });
       }
+      */
       
       // Update tutorial
       Object.assign(tutorial, tutorialData);
@@ -218,9 +222,11 @@ class TutorialController {
       }
       
       // Check if user is the creator
+      /*
       if (tutorial.createdBy !== req.body.userId) {
         return res.status(403).json({ error: 'Not authorized to delete this tutorial' });
       }
+      */
       
       // Delete file from S3
       await s3Service.deleteFile(tutorial.s3Key);
@@ -349,11 +355,13 @@ class TutorialController {
       const { userId } = req.params;
       
       // Check if user exists
+      /*
       try {
         await axios.get(`${userServiceUrl}/api/users/${userId}`);
       } catch (error) {
         return res.status(404).json({ error: 'User not found' });
       }
+      */
       
       const tutorials = await Tutorial.find({ createdBy: userId }).sort({ createdAt: -1 });
       
