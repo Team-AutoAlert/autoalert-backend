@@ -1,10 +1,12 @@
 {
-  "name": "user-service",
+  "name": "payment-service",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Payment service using Payhere",
+  "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +15,15 @@
     "axios": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "dotenv": "^16.0.3",
+    "crypto": "^1.0.1",
+    "body-parser": "^1.20.2",
+    "mongoose": "^7.0.3",
+    "joi": "^17.9.1"
+  },
+  "devDependencies": {
+    "jest": "^29.5.0",
+    "supertest": "^6.3.3"
   }
 }
