@@ -1,0 +1,14 @@
+const socket = io('http://localhost:3006');
+
+socket.on('connect', () => {
+    console.log('Connected to tracking service');
+    socket.emit('join-tracking-session', 'session-id-here');
+});
+
+socket.on('location-updated', (data) => {
+    console.log('Location updated:', data);
+});
+
+socket.on('session-updated', (data) => {
+    console.log('Session updated:', data);
+});
