@@ -61,3 +61,6 @@ mongod.lock
 # Misc
 .DS_Store
 Thumbs.db
+
+# Firebase
+firebase-service-account.json
