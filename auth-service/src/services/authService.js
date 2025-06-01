@@ -2,16 +2,27 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const Auth = require('../models/Auth');
 const userService = require('./userService');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('./emailService');
+const emailService = require('./emailService');
+const notificationService = require('./notificationService');
 const logger = require('../utils/logger');
 
 class AuthService {
+    generateVerificationCode() {
+        return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+    }
+
     async register(userData) {
         try {
             // Check if user already exists
-            const existingAuth = await Auth.findOne({ email: userData.email });
+            const existingAuth = await Auth.findOne({
+                $or: [
+                    { email: userData.email },
+                    { phoneNumber: userData.phoneNumber }
+                ]
+            });
+            
             if (existingAuth) {
-                throw new Error('Email already registered');
+                throw new Error('Email or phone number already registered');
             }
 
             // Create user in user-service
@@ -23,21 +34,35 @@ class AuthService {
                 phoneNumber: userData.phoneNumber
             });
 
+            // Generate verification tokens
+            const emailToken = crypto.randomBytes(32).toString('hex');
+            const phoneCode = this.generateVerificationCode();
+
             // Create auth record
-            const verificationToken = crypto.randomBytes(32).toString('hex');
             const auth = new Auth({
                 userId: user.userId,
                 email: userData.email,
+                phoneNumber: userData.phoneNumber,
                 password: userData.password,
-                verificationToken,
-                verificationExpires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
+                emailVerificationToken: emailToken,
+                emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+                phoneVerificationCode: phoneCode,
+                phoneVerificationExpires: Date.now() + 10 * 60 * 1000 // 10 minutes
             });
             await auth.save();
 
-            // Send verification email
-            await sendVerificationEmail(userData.email, verificationToken);
+            // Send verification email and SMS
+            await Promise.all([
+                emailService.sendVerificationEmail(userData.email, emailToken),
+                notificationService.sendVerificationSMS(userData.phoneNumber, phoneCode)
+            ]);
 
-            return { userId: user.userId, email: userData.email };
+            return {
+                userId: user.userId,
+                email: userData.email,
+                phoneNumber: userData.phoneNumber,
+                message: 'Verification email and SMS sent'
+            };
         } catch (error) {
             logger.error('Registration failed:', error);
             throw error;
@@ -46,23 +71,70 @@ class AuthService {
 
     async verifyEmail(token) {
         const auth = await Auth.findOne({
-            verificationToken: token,
-            verificationExpires: { $gt: Date.now() }
+            emailVerificationToken: token,
+            emailVerificationExpires: { $gt: Date.now() }
         });
 
         if (!auth) {
             throw new Error('Invalid or expired verification token');
         }
 
-        auth.isVerified = true;
-        auth.verificationToken = undefined;
-        auth.verificationExpires = undefined;
+        auth.isEmailVerified = true;
+        auth.emailVerificationToken = undefined;
+        auth.emailVerificationExpires = undefined;
+
+        // Activate account if both email and phone are verified
+        if (auth.isPhoneVerified) {
+            auth.isActive = true;
+            await userService.updateUserStatus(auth.userId, 'active');
+        }
+
+        await auth.save();
+        return { message: 'Email verified successfully' };
+    }
+
+    async verifyPhone(phoneNumber, code) {
+        const auth = await Auth.findOne({
+            phoneNumber,
+            phoneVerificationCode: code,
+            phoneVerificationExpires: { $gt: Date.now() }
+        });
+
+        if (!auth) {
+            throw new Error('Invalid or expired verification code');
+        }
+
+        auth.isPhoneVerified = true;
+        auth.phoneVerificationCode = undefined;
+        auth.phoneVerificationExpires = undefined;
+
+        // Activate account if both email and phone are verified
+        if (auth.isEmailVerified) {
+            auth.isActive = true;
+            await userService.updateUserStatus(auth.userId, 'active');
+        }
+
+        await auth.save();
+        return { message: 'Phone number verified successfully' };
+    }
+
+    async resendPhoneVerification(phoneNumber) {
+        const auth = await Auth.findOne({ phoneNumber });
+        if (!auth) {
+            throw new Error('User not found');
+        }
+
+        if (auth.isPhoneVerified) {
+            throw new Error('Phone number already verified');
+        }
+
+        const code = this.generateVerificationCode();
+        auth.phoneVerificationCode = code;
+        auth.phoneVerificationExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await auth.save();
 
-        // Update user status in user-service
-        await userService.updateUserStatus(auth.userId, 'active');
-
-        return { message: 'Email verified successfully' };
+        await notificationService.sendVerificationSMS(phoneNumber, code);
+        return { message: 'Verification code sent' };
     }
 
     async login(email, password) {
@@ -71,8 +143,8 @@ class AuthService {
             throw new Error('Invalid credentials');
         }
 
-        if (!auth.isVerified) {
-            throw new Error('Please verify your email first');
+        if (!auth.isActive) {
+            throw new Error('Account not fully verified. Please verify both email and phone number.');
         }
 
         if (auth.lockUntil && auth.lockUntil > Date.now()) {
@@ -114,7 +186,7 @@ class AuthService {
         auth.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
         await auth.save();
 
-        await sendPasswordResetEmail(email, resetToken);
+        await emailService.sendPasswordResetEmail(email, resetToken);
 
         return { message: 'Password reset email sent' };
     }

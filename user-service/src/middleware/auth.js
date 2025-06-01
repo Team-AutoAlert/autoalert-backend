@@ -17,4 +17,33 @@ const authenticate = async (req, res, next) => {
     }
 };
 
-module.exports = authenticate;
+const auth = (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader) {
+            return res.status(401).json({
+                success: false,
+                error: 'No authorization header'
+            });
+        }
+
+        // Check for internal API key
+        if (authHeader === `Bearer ${process.env.INTERNAL_API_KEY}`) {
+            return next();
+        }
+
+        return res.status(401).json({
+            success: false,
+            error: 'Invalid authorization'
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: 'Authentication error',
+            message: error.message
+        });
+    }
+};
+
+module.exports = { authenticate, auth };
