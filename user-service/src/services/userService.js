@@ -187,6 +187,14 @@ class UserService {
     }
     return profile;
   }
+
+  async getUserByEmail(email) {
+    const user = await User.findOne({ email });
+    if (!user) {
+      throw new UserNotFoundError('User not found');
+    }
+    return user;
+  }
 }
 
 module.exports = new UserService(); 
