@@ -1,5 +1,5 @@
 const userService = require('../services/userService');
-const { validateUser, validateUserProfile } = require('../middleware/validation');
+const { validateUser, validateUserProfile, validateVehicle } = require('../middleware/validation');
 const logger = require('../utils/logger');
 
 class UserController {
@@ -65,6 +65,67 @@ class UserController {
     try {
       await userService.deleteUser(req.params.userId);
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async addVehicle(req, res, next) {
+    try {
+      const validatedData = await validateVehicle(req.body);
+      const result = await userService.addVehicle(req.params.userId, validatedData);
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getVehicles(req, res, next) {
+    try {
+      const vehicles = await userService.getVehicles(req.params.userId);
+      res.json(vehicles);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateVehicle(req, res, next) {
+    try {
+      const validatedData = await validateVehicle(req.body);
+      const vehicle = await userService.updateVehicle(
+        req.params.userId,
+        req.params.vehicleId,
+        validatedData
+      );
+      res.json(vehicle);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteVehicle(req, res, next) {
+    try {
+      await userService.deleteVehicle(req.params.userId, req.params.vehicleId);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findByPhone(req, res, next) {
+    try {
+      const { phoneNumber } = req.query;
+      const profile = await userService.findUserByPhone(phoneNumber);
+      res.json(profile);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getUserProfileWithPhone(req, res, next) {
+    try {
+      const profile = await userService.getUserProfileWithPhone(req.params.userId);
+      res.json(profile);
     } catch (error) {
       next(error);
     }
