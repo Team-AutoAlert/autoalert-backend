@@ -1,34 +1,66 @@
 const mongoose = require('mongoose');
 
 const sosAlertSchema = new mongoose.Schema({
-  orderId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Order',
-    required: true
-  },
-  communicationMode: {
-    type: String,
-    enum: ['VOICE', 'VIDEO'],
-    required: true
-  },
-  callDetails: {
-    startTime: Date,
-    endTime: Date,
-    duration: Number, // in minutes
+    driverId: {
+        type: String,
+        required: true
+    },
+    vehicleId: {
+        type: String,
+        required: true
+    },
     status: {
-      type: String,
-      enum: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'FAILED'],
-      default: 'NOT_STARTED'
+        type: String,
+        enum: ['active', 'in_progress', 'completed', 'cancelled'],
+        default: 'active'
+    },
+    communicationMode: {
+        type: String,
+        enum: ['voice', 'video'],
+        required: true
+    },
+    breakdownDetails: {
+        type: String,
+        required: true
+    },
+    requiredExpertise: [{
+        type: String,
+        required: true
+    }],
+    mechanicId: {
+        type: String,
+        default: null
+    },
+    callDuration: {
+        type: Number,
+        default: null
+    },
+    charges: {
+        type: Number,
+        default: null
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    acceptedAt: {
+        type: Date,
+        default: null
+    },
+    completedAt: {
+        type: Date,
+        default: null
     }
-  },
-  resolutionStatus: {
-    type: String,
-    enum: ['RESOLVED', 'UNRESOLVED', 'ESCALATED'],
-    default: 'UNRESOLVED'
-  },
-  resolutionNotes: String
 }, {
-  timestamps: true
+    toJSON: {
+        transform: function(doc, ret) {
+            // Remove unwanted fields
+            delete ret.__v;
+            return ret;
+        }
+    }
 });
+
+sosAlertSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('SOSAlert', sosAlertSchema); 
