@@ -11,6 +11,12 @@ const userProfileSchema = new mongoose.Schema({
     enum: ['driver', 'mechanic'],
     required: true
   },
+  // Add phone number field
+  phoneNumber: {
+    type: String,
+    required: true,
+    trim: true
+  },
   // Driver-specific fields
   driverDetails: {
     licenseNumber: String,
@@ -19,7 +25,39 @@ const userProfileSchema = new mongoose.Schema({
     vehicleCount: {
       type: Number,
       default: 0
-    }
+    },
+    // New vehicle information
+    vehicles: [{
+      vehicleId: {
+        type: String,
+        required: true,
+        unique: true
+      },
+      brand: {
+        type: String,
+        required: true
+      },
+      model: {
+        type: String,
+        required: true
+      },
+      fuelType: {
+        type: String,
+        enum: ['Petrol', 'Diesel', 'Electric', 'Hybrid'],
+        required: true
+      },
+      year: {
+        type: Number,
+        required: true
+      },
+      registrationNumber: {
+        type: String,
+        required: true,
+        unique: true
+      },
+      lastServiceDate: Date,
+      nextServiceDue: Date
+    }]
   },
   // Mechanic-specific fields
   mechanicDetails: {
