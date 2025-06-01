@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest"
+    "migrate": "node src/scripts/addPhoneToProfiles.js"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +17,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "joi": "^17.11.0",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
