@@ -14,13 +14,31 @@ const authSchema = new mongoose.Schema({
         lowercase: true,
         trim: true
     },
+    phoneNumber: {
+        type: String,
+        required: true,
+        trim: true
+    },
     password: {
         type: String,
         required: true
     },
-    verificationToken: String,
-    verificationExpires: Date,
-    isVerified: {
+    // Email verification
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    isEmailVerified: {
+        type: Boolean,
+        default: false
+    },
+    // Phone verification
+    phoneVerificationCode: String,
+    phoneVerificationExpires: Date,
+    isPhoneVerified: {
+        type: Boolean,
+        default: false
+    },
+    // Account status
+    isActive: {
         type: Boolean,
         default: false
     },

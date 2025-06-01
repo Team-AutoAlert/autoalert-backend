@@ -4,6 +4,10 @@ const { port } = require('./config/config');
 const authRoutes = require('./routes/authRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 
@@ -23,7 +27,18 @@ app.get('/health', (req, res) => {
 // Error handler
 app.use(errorHandler);
 
+// Error handling
+app.use((err, req, res, next) => {
+    logger.error(err.stack);
+    res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: err.message
+    });
+});
+
 // Start server
-app.listen(port, () => {
-  logger.info(`Auth service running on port ${port}`);
+const PORT = process.env.PORT || 3002;
+app.listen(PORT, () => {
+  logger.info(`Auth service running on port ${PORT}`);
 });
