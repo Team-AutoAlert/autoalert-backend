@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { createPayment, handleSuccess, handleCancel, handleNotify } = require('../controllers/payment.controller');
+const paymentController = require('../controllers/paymentController');
 
-// Create a new payment
-router.post('/create', createPayment);
+// Bill generation and management
+router.post('/bills', paymentController.generateBill);
+router.get('/bills', paymentController.getAllBills);
+router.get('/bills/driver/:driverId', paymentController.getBillsByDriver);
+router.get('/bills/mechanic/:mechanicId', paymentController.getBillsByMechanic);
 
-// Payment callback routes
-router.post('/success', handleSuccess);
-router.post('/cancel', handleCancel);
-router.post('/notify', handleNotify);
+// Payment processing
+router.post('/bills/:billId/process', paymentController.processPayment);
+router.get('/bills/:billId/status', paymentController.getPaymentStatus);
 
 module.exports = router; 

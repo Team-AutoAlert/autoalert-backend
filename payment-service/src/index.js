@@ -1,38 +1,49 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
-const connectDB = require('./config/database');
-const config = require('./config/config');
+const paymentRoutes = require('./routes/paymentRoutes');
+const logger = require('./utils/logger');
 
 // Load environment variables
 dotenv.config();
-
-// Connect to MongoDB
-connectDB();
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
 
 // Routes
-const paymentRoutes = require('./routes/paymentRoutes');
-app.use('/payment', paymentRoutes);
+app.use('/api/payments', paymentRoutes);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date() });
+});
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => {
+        logger.info('Connected to MongoDB');
+    })
+    .catch((error) => {
+        logger.error('MongoDB connection error:', error);
+        process.exit(1);
+    });
 
 // Error handling middleware
-const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
-
-// Handle 404 routes
-app.use(notFoundHandler);
-
-// Global error handler
-app.use(errorHandler);
-
-const PORT = config.server.port;
-
-app.listen(PORT, () => {
-  console.log(`Payment service running on port ${PORT} in ${config.server.nodeEnv} mode`);
+app.use((err, req, res, next) => {
+    logger.error('Unhandled error:', err);
+    res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
 });
+
+// Start server
+const PORT = process.env.PORT;
+app.listen(PORT, () => {
+    logger.info(`Payment service listening on port ${PORT}`);
+}); 
