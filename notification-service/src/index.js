@@ -32,8 +32,8 @@ app.use(express.json());
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => logger.info('Connected to MongoDB'))
-    .catch(err => logger.error('MongoDB connection error:', err));
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
 app.use('/api/notifications', notificationRoutes);
@@ -41,7 +41,11 @@ app.use('/api/notifications', notificationRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
     logger.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
+    res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: err.message
+    });
 });
 
 // Health check route

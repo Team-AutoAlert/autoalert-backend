@@ -4,133 +4,363 @@ const axios = require('axios');
 const { userServiceUrl } = require('../config/config');
 const { AuthError } = require('../utils/errors');
 
-class AuthController {
-  // Register new user
-  async register(req, res, next) {
+const register = async (req, res) => {
+    let firebaseUser = null;
     try {
-      const { email, password, role, firstName, lastName, phoneNumber } = req.body;
+        const { userId, email, password, role, firstName, lastName, phoneNumber } = req.body;
 
-      // Create user in Firebase
-      const userRecord = await admin.auth().createUser({
-        email,
-        password,
-        displayName: `${firstName} ${lastName}`,
-        phoneNumber
-      });
+        logger.info(`Attempting to create user with ID: ${userId}`);
 
-      // Set custom claims (role)
-      await admin.auth().setCustomUserClaims(userRecord.uid, { role });
+        // Create user in Firebase
+        firebaseUser = await admin.auth().createUser({
+            uid: userId,
+            email,
+            password,
+            displayName: `${firstName} ${lastName}`,
+            phoneNumber,
+            emailVerified: false
+        });
 
-      // Create user profile in user-service
-      const userProfile = {
-        userId: userRecord.uid,
-        email,
-        role,
-        firstName,
-        lastName,
-        phoneNumber
-      };
+        logger.info(`Firebase user created successfully: ${userId}`);
 
-      // Call user-service to create profile
-      await axios.post(`${userServiceUrl}/api/users`, userProfile);
+        // Set custom claims
+        await admin.auth().setCustomUserClaims(userId, { role });
 
-      // Generate custom token
-      const token = await admin.auth().createCustomToken(userRecord.uid);
+        // Prepare user profile
+        const userProfile = {
+            userId,
+            email,
+            role,
+            firstName,
+            lastName,
+            phoneNumber,
+            status: 'inactive',
+            location: {
+                type: 'Point',
+                coordinates: [0, 0]
+            }
+        };
 
-      logger.info(`User registered successfully: ${userRecord.uid}`);
+        logger.info(`Attempting to create user profile in user service for: ${userId}`);
 
-      res.status(201).json({
-        message: 'Registration successful',
-        userId: userRecord.uid,
-        token
-      });
+        // Create user in user service
+        const userServiceResponse = await axios.post(
+            `${process.env.USER_SERVICE_URL}/api/users`,
+            userProfile
+        );
+
+        logger.info(`User profile created successfully in user service: ${userId}`);
+
+        // Generate verification link
+        const emailVerificationLink = await admin.auth().generateEmailVerificationLink(email);
+
+        // Try to send verification email/SMS
+        try {
+            await axios.post(`${process.env.NOTIFICATION_SERVICE_URL}/api/notifications/send-verification`, {
+                userId,
+                email,
+                phoneNumber,
+                emailVerificationLink
+            });
+            logger.info(`Verification notifications sent for user: ${userId}`);
+        } catch (notificationError) {
+            logger.error(`Failed to send verification notifications: ${notificationError.message}`);
+            // Continue with registration even if notification fails
+        }
+
+        // Generate custom token
+        const token = await admin.auth().createCustomToken(userId);
+
+        res.status(201).json({
+            success: true,
+            message: 'Registration successful. Please check your email and phone for verification.',
+            userId,
+            token,
+            user: userServiceResponse.data
+        });
+
     } catch (error) {
-      logger.error('Registration error:', error);
-      next(new AuthError('Registration failed', error));
-    }
-  }
+        logger.error('Registration error:', error);
 
-  // Login user
-  async login(req, res, next) {
+        // Cleanup if Firebase user was created but other steps failed
+        if (firebaseUser) {
+            try {
+                await admin.auth().deleteUser(firebaseUser.uid);
+                logger.info(`Cleaned up Firebase user after failed registration: ${firebaseUser.uid}`);
+            } catch (cleanupError) {
+                logger.error('Failed to cleanup Firebase user:', cleanupError);
+            }
+        }
+
+        // Send detailed error response
+        const errorMessage = error.response?.data?.message || error.message;
+        res.status(400).json({
+            success: false,
+            error: 'Registration failed',
+            message: errorMessage,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+};
+
+const login = async (req, res) => {
     try {
-      const { idToken } = req.body;
+        const { email, password } = req.body;
 
-      // Verify the Firebase ID token
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      
-      // Get user details
-      const userRecord = await admin.auth().getUser(decodedToken.uid);
+        // Get the user from Firebase
+        const userRecord = await admin.auth().getUserByEmail(email);
 
-      logger.info(`User logged in: ${userRecord.uid}`);
+        // Check if email is verified
+        if (!userRecord.emailVerified) {
+            return res.status(403).json({
+                success: false,
+                error: 'Account not verified',
+                message: 'Please verify your email before logging in'
+            });
+        }
 
-      res.json({
-        userId: userRecord.uid,
-        email: userRecord.email,
-        role: decodedToken.role || 'driver',
-        displayName: userRecord.displayName
-      });
+        // Generate custom token for login
+        const token = await admin.auth().createCustomToken(userRecord.uid);
+
+        res.json({
+            success: true,
+            message: 'Login successful',
+            token,
+            user: {
+                userId: userRecord.uid,
+                email: userRecord.email,
+                displayName: userRecord.displayName,
+                role: userRecord.customClaims?.role || 'driver'
+            }
+        });
     } catch (error) {
-      logger.error('Login error:', error);
-      next(new AuthError('Login failed', error));
+        logger.error('Login failed:', error);
+        res.status(400).json({
+            success: false,
+            error: 'Login failed',
+            message: error.message
+        });
     }
-  }
+};
 
-  // Password reset
-  async resetPassword(req, res, next) {
+const verifyEmail = async (req, res) => {
     try {
-      const { email } = req.body;
-      
-      await admin.auth().generatePasswordResetLink(email);
-      
-      logger.info(`Password reset link sent to: ${email}`);
-      
-      res.json({
-        message: 'Password reset link sent successfully'
-      });
-    } catch (error) {
-      logger.error('Password reset error:', error);
-      next(new AuthError('Password reset failed', error));
-    }
-  }
+        const { email } = req.body;
 
-  // Verify token
-  async verifyToken(req, res) {
+        // Get the user record by email
+        const userRecord = await admin.auth().getUserByEmail(email);
+
+        // Check if email is already verified
+        if (userRecord.emailVerified) {
+            // Update user status in user service
+            await axios.patch(`${userServiceUrl}/api/users/${userRecord.uid}/verify-email`, {
+                verified: true
+            });
+
+            return res.json({
+                success: true,
+                message: 'Email verified successfully'
+            });
+        }
+
+        // If not verified, generate a new verification link
+        const emailVerificationLink = await admin.auth().generateEmailVerificationLink(email);
+        
+        // Send the verification link
+        await axios.post(`${process.env.NOTIFICATION_SERVICE_URL}/api/notifications/send-verification`, {
+            userId: userRecord.uid,
+            email,
+            emailVerificationLink,
+            resendEmailOnly: true
+        });
+
+        res.status(400).json({
+            success: false,
+            message: 'Email not verified. A new verification link has been sent to your email.'
+        });
+    } catch (error) {
+        logger.error('Email verification check failed:', error);
+        res.status(400).json({
+            success: false,
+            error: 'Email verification failed',
+            message: error.message
+        });
+    }
+};
+
+const verifyPhone = async (req, res) => {
     try {
-      const { token } = req.body;
-      const decodedToken = await admin.auth().verifyIdToken(token);
-      
-      res.json({
-        valid: true,
-        userId: decodedToken.uid,
-        role: decodedToken.role
-      });
-    } catch (error) {
-      logger.error('Token verification error:', error);
-      res.json({ valid: false });
-    }
-  }
+        const { userId, code } = req.body;
 
-  // Update user role
-  async updateRole(req, res, next) {
+        if (!userId || !code) {
+            return res.status(400).json({
+                success: false,
+                error: 'Both userId and code are required'
+            });
+        }
+
+        // First verify the code with notification service
+        const verifyResponse = await axios.post(
+            `${process.env.NOTIFICATION_SERVICE_URL}/api/notifications/verify-sms`,
+            {
+                userId,
+                code
+            }
+        );
+
+        if (!verifyResponse.data.success) {
+            return res.status(400).json({
+                success: false,
+                message: verifyResponse.data.message || 'Invalid verification code'
+            });
+        }
+
+        // If code is valid, update user's phone verification status
+        const userResponse = await axios.patch(
+            `${process.env.USER_SERVICE_URL}/api/users/${userId}/verify-phone`,
+            {},
+            {
+                headers: {
+                    'Authorization': `Bearer ${process.env.INTERNAL_API_KEY}`
+                }
+            }
+        );
+
+        if (!userResponse.data.success) {
+            throw new Error('Failed to update user verification status');
+        }
+
+        res.json({
+            success: true,
+            message: 'Phone number verified successfully',
+            data: userResponse.data.data
+        });
+
+    } catch (error) {
+        logger.error('Phone verification failed:', error);
+        res.status(error.response?.status || 500).json({
+            success: false,
+            error: 'Phone verification failed',
+            message: error.response?.data?.message || error.message
+        });
+    }
+};
+
+// Add method to validate phone verification code
+const validatePhoneVerificationCode = async (userId, code) => {
     try {
-      const { userId, role } = req.body;
-      
-      // Update Firebase custom claims
-      await admin.auth().setCustomUserClaims(userId, { role });
-      
-      // Update user-service
-      await axios.put(`${userServiceUrl}/api/users/${userId}`, { role });
-      
-      logger.info(`Role updated for user: ${userId}`);
-      
-      res.json({
-        message: 'Role updated successfully'
-      });
+        // For testing purposes, accept any 6-digit code
+        // In production, you should implement proper code verification
+        return code.length === 6 && /^\d+$/.test(code);
     } catch (error) {
-      logger.error('Role update error:', error);
-      next(new AuthError('Role update failed', error));
+        logger.error('Code validation failed:', error);
+        return false;
     }
-  }
-}
+};
 
-module.exports = new AuthController(); 
+// Password reset
+const resetPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        // Generate password reset link
+        await admin.auth().generatePasswordResetLink(email);
+        
+        res.json({
+            success: true,
+            message: 'Password reset link sent to your email'
+        });
+    } catch (error) {
+        logger.error('Password reset failed:', error);
+        res.status(400).json({
+            success: false,
+            error: 'Password reset failed',
+            message: error.message
+        });
+    }
+};
+
+// Verify token
+const verifyToken = async (req, res) => {
+    try {
+        const { token } = req.body;
+        
+        // Verify the Firebase ID token
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        
+        res.json({
+            valid: true,
+            userId: decodedToken.uid,
+            role: decodedToken.role || 'driver'
+        });
+    } catch (error) {
+        logger.error('Token verification error:', error);
+        res.json({ 
+            valid: false,
+            error: 'Invalid token'
+        });
+    }
+};
+
+// Update user role
+const updateRole = async (req, res) => {
+    try {
+        const { userId, role } = req.body;
+        
+        // Update Firebase custom claims
+        await admin.auth().setCustomUserClaims(userId, { role });
+        
+        // Update user-service
+        await axios.put(`${process.env.USER_SERVICE_URL}/api/users/${userId}`, { role });
+        
+        logger.info(`Role updated for user: ${userId}`);
+        
+        res.json({
+            success: true,
+            message: 'Role updated successfully'
+        });
+    } catch (error) {
+        logger.error('Role update error:', error);
+        res.status(400).json({
+            success: false,
+            error: 'Role update failed',
+            message: error.message
+        });
+    }
+};
+
+const resendPhoneVerification = async (req, res) => {
+    try {
+        const { userId, phoneNumber } = req.body;
+
+        // Send verification email and SMS
+        await axios.post(`${process.env.NOTIFICATION_SERVICE_URL}/api/notifications/send-verification`, {
+            userId,
+            phoneNumber,
+            resendSMSOnly: true // This flag tells notification service to only send SMS
+        });
+
+        res.json({
+            success: true,
+            message: 'Verification code resent successfully'
+        });
+    } catch (error) {
+        logger.error('Resend verification failed:', error);
+        res.status(400).json({
+            success: false,
+            error: 'Failed to resend verification code',
+            message: error.message
+        });
+    }
+};
+
+module.exports = {
+    register,
+    login,
+    verifyEmail,
+    verifyPhone,
+    verifyToken,
+    resetPassword,
+    updateRole,
+    resendPhoneVerification
+}; 
