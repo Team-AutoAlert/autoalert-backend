@@ -24,6 +24,10 @@ const tutorialSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  thumbnailS3Key: {
+    type: String,
+    default: null
+  },
   s3Key: {
     type: String,
     required: true
