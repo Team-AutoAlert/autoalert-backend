@@ -84,7 +84,7 @@ router.get('/search/phone', (req, res) => {
 
 // Get user by ID
 router.get('/:userId', (req, res) => {
-    User.findById(req.params.userId)
+    User.findOne({ userId: req.params.userId })
         .then(user => {
             if (!user) {
                 return res.status(404).json({

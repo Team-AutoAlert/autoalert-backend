@@ -9,9 +9,28 @@ const roomRequestSchema = Joi.object({
 });
 
 const callRequestSchema = Joi.object({
-  to: Joi.string().required(),
-  from: Joi.string().required(),
-  userId: Joi.string().required()
+  to: Joi.string().when('callType', {
+    is: 'traditional',
+    then: Joi.required()
+  }),
+  from: Joi.string().when('callType', {
+    is: 'traditional',
+    then: Joi.required()
+  }),
+  userId: Joi.string().required(),
+  callType: Joi.string().valid('traditional', 'agora').default('traditional'),
+  mediaType: Joi.string().valid('audio', 'video').when('callType', {
+    is: 'agora',
+    then: Joi.required()
+  }),
+  channelName: Joi.string().when('callType', {
+    is: 'agora',
+    then: Joi.required()
+  }),
+  participants: Joi.object().when('callType', {
+    is: 'agora',
+    then: Joi.required()
+  })
 });
 
 const validateRoomRequest = async (data) => {

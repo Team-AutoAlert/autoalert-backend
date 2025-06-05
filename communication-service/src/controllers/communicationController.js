@@ -1,4 +1,5 @@
 const twilioService = require('../services/twilioService');
+const internetCallService = require('../services/internetCallService');
 const logger = require('../utils/logger');
 const axios = require('axios');
 const { userServiceUrl, authServiceUrl } = require('../config/config');
@@ -85,11 +86,11 @@ class CommunicationController {
   }
 
   /**
-   * Initiate a voice call
+   * Initiate a call (traditional or internet)
    */
   async initiateVoiceCall(req, res, next) {
     try {
-      const { to, from, userId } = await validateCallRequest(req.body);
+      const { to, from, userId, callType, mediaType, channelName, participants } = await validateCallRequest(req.body);
       
       // Verify user exists
       try {
@@ -98,14 +99,54 @@ class CommunicationController {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      const call = await twilioService.createVoiceCall(to, from);
+      let callResponse;
+      if (callType === 'agora') {
+        // For Agora calls, initialize a call session
+        callResponse = await internetCallService.initializeCallSession(channelName, participants, mediaType);
+        res.status(201).json({
+          channelName: callResponse.channelName,
+          participants: callResponse.participants,
+          startTime: callResponse.startTime,
+          callType,
+          mediaType: callResponse.mediaType
+        });
+      } else {
+        // For traditional calls, use Twilio
+        const call = await twilioService.createVoiceCall(to, from);
+        res.status(201).json({
+          callSid: call.sid,
+          status: call.status,
+          direction: call.direction,
+          from: call.from,
+          to: call.to,
+          callType: 'traditional',
+          mediaType: 'audio'
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Join an existing internet call
+   */
+  async joinInternetCall(req, res, next) {
+    try {
+      const { channelName, userId, role, mediaType } = req.body;
+
+      // Verify user exists
+      try {
+        await axios.get(`${userServiceUrl}/api/users/${userId}`);
+      } catch (error) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const participantDetails = await internetCallService.addParticipant(channelName, userId, role, mediaType);
       
-      res.status(201).json({
-        callSid: call.sid,
-        status: call.status,
-        direction: call.direction,
-        from: call.from,
-        to: call.to
+      res.json({
+        ...participantDetails,
+        callType: 'agora'
       });
     } catch (error) {
       next(error);
@@ -128,11 +169,11 @@ class CommunicationController {
   }
 
   /**
-   * Generate voice token for client
+   * Generate voice token for client (traditional or internet)
    */
   async getVoiceToken(req, res, next) {
     try {
-      const { userId, role } = req.body;
+      const { userId, role, callType = 'traditional' } = req.body;
       
       // Verify user exists
       try {
@@ -142,11 +183,14 @@ class CommunicationController {
       }
 
       const identity = `${userId}-${role}`;
-      const token = twilioService.generateVoiceToken(identity);
+      const token = callType === 'whatsapp' 
+        ? internetCallService.generateInternetCallToken(identity)
+        : twilioService.generateVoiceToken(identity);
       
       res.json({
         token,
-        identity
+        identity,
+        callType
       });
     } catch (error) {
       next(error);
