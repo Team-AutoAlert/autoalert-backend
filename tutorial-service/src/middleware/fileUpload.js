@@ -15,7 +15,16 @@ const fileFilter = (req, file, cb) => {
     'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
   };
 
-  // Get file type from request
+  // For thumbnail, always allow image types
+  if (file.fieldname === 'thumbnail') {
+    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (imageTypes.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new ValidationError('Thumbnail must be an image file (jpeg, png, gif, webp)'));
+  }
+
+  // For tutorial file, check based on tutorial type
   const fileType = req.body.type || 'other';
   
   // Check if file type is allowed
@@ -35,12 +44,15 @@ const upload = multer({
   }
 });
 
-// Single file upload middleware
-const uploadTutorialFile = upload.single('file');
+// Multiple file upload middleware
+const uploadTutorialFiles = upload.fields([
+  { name: 'tutorial', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]);
 
 // Handle multer errors
 const handleUploadErrors = (req, res, next) => {
-  uploadTutorialFile(req, res, (err) => {
+  uploadTutorialFiles(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
