@@ -7,23 +7,49 @@ require('dotenv').config();
 
 const app = express();
 
-// Middleware
-app.use(helmet()); // Security headers
-app.use(cors()); // Enable CORS
-app.use(morgan('dev')); // Logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+// Increased body size limits for file uploads and large payloads
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// CORS configuration with specific options for third-party services
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    credentials: true,
+    maxAge: 86400 // 24 hours
+}));
+
+// Modified helmet configuration to allow certain headers needed for third-party services
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            connectSrc: ["'self'", "https://*"],
+            frameSrc: ["'self'", "https://*"],
+            imgSrc: ["'self'", "https://*", "data:", "blob:"],
+            mediaSrc: ["'self'", "https://*", "data:", "blob:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            styleSrc: ["'self'", "'unsafe-inline'"]
+        }
+    }
+}));
+
+// Logging
+app.use(morgan('dev'));
 
 // Use routes
 app.use('/api', routes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({
+    console.error('Error:', err);
+    res.status(err.status || 500).json({
         status: 'error',
-        message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : {}
+        message: err.message || 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? err : {}
     });
 });
 
