@@ -15,77 +15,99 @@ const SERVICES = {
     COMMUNICATION: process.env.COMMUNICATION_SERVICE_URL || 'http://localhost:3003'
 };
 
-// Auth Service Routes
+// Common proxy options for services with third-party integrations
+const thirdPartyProxyConfig = {
+    changeOrigin: true,
+    timeout: 60000, // Increased timeout for third-party calls
+    proxyTimeout: 60000,
+    secure: false, // Allow insecure SSL certificates
+    ws: true, // Enable WebSocket support
+    xfwd: true, // Add x-forward headers
+    onProxyReq: (proxyReq, req, res) => {
+        // Preserve original headers
+        if (req.headers.authorization) {
+            proxyReq.setHeader('authorization', req.headers.authorization);
+        }
+        // Handle POST requests
+        if (req.body && req.method === 'POST') {
+            const bodyData = JSON.stringify(req.body);
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            proxyReq.write(bodyData);
+        }
+    },
+    onError: (err, req, res) => {
+        console.error('Proxy Error:', err);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error connecting to the service',
+            error: process.env.NODE_ENV === 'development' ? err.message : {}
+        });
+    }
+};
+
+// Regular proxy config for simple services
+const regularProxyConfig = {
+    changeOrigin: true,
+    timeout: 30000,
+    secure: true
+};
+
+// Auth Service Routes (with third-party config for Firebase)
 router.use('/auth', createProxyMiddleware({
     target: SERVICES.AUTH,
-    changeOrigin: true,
     pathRewrite: {
         '^/auth': '/'
+    },
+    ...thirdPartyProxyConfig,
+    onProxyReq: (proxyReq, req, res) => {
+        // Special handling for Firebase auth
+        if (req.body && req.method === 'POST') {
+            const bodyData = JSON.stringify(req.body);
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            proxyReq.write(bodyData);
+        }
     }
 }));
 
-// User Service Routes
-router.use('/users', createProxyMiddleware({
-    target: SERVICES.USER,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/users': '/'
-    }
-}));
-
-// Order Service Routes
-router.use('/orders', createProxyMiddleware({
-    target: SERVICES.ORDER,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/orders': '/'
-    }
-}));
-
-// Payment Service Routes
-router.use('/payments', createProxyMiddleware({
-    target: SERVICES.PAYMENT,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/payments': '/'
-    }
-}));
-
-// Tracking Service Routes
-router.use('/tracking', createProxyMiddleware({
-    target: SERVICES.TRACKING,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/tracking': '/'
-    }
-}));
-
-// Notification Service Routes
-router.use('/notifications', createProxyMiddleware({
-    target: SERVICES.NOTIFICATION,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/notifications': '/'
-    }
-}));
-
-// Tutorial Service Routes
-router.use('/tutorials', createProxyMiddleware({
-    target: SERVICES.TUTORIAL,
-    changeOrigin: true,
-    pathRewrite: {
-        '^/tutorials': '/'
-    }
-}));
-
-// Communication Service Routes
+// Communication Service Routes (with third-party config for Twilio)
 router.use('/communications', createProxyMiddleware({
     target: SERVICES.COMMUNICATION,
-    changeOrigin: true,
     pathRewrite: {
         '^/communications': '/'
+    },
+    ...thirdPartyProxyConfig,
+    onProxyReq: (proxyReq, req, res) => {
+        // Special handling for Twilio
+        if (req.body && req.method === 'POST') {
+            const bodyData = JSON.stringify(req.body);
+            proxyReq.setHeader('Content-Type', 'application/json');
+            proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+            proxyReq.write(bodyData);
+        }
     }
 }));
+
+// Regular service routes with standard config
+const regularServices = [
+    { path: '/users', target: SERVICES.USER },
+    { path: '/orders', target: SERVICES.ORDER },
+    { path: '/payments', target: SERVICES.PAYMENT },
+    { path: '/tracking', target: SERVICES.TRACKING },
+    { path: '/notifications', target: SERVICES.NOTIFICATION },
+    { path: '/tutorials', target: SERVICES.TUTORIAL }
+];
+
+regularServices.forEach(service => {
+    router.use(service.path, createProxyMiddleware({
+        target: service.target,
+        pathRewrite: {
+            [`^${service.path}`]: '/'
+        },
+        ...regularProxyConfig
+    }));
+});
 
 // Health check endpoint
 router.get('/health', (req, res) => {
