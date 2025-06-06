@@ -16,9 +16,12 @@ class TutorialController {
       // Validate tutorial data
       const tutorialData = await validateTutorial(req.body);
       
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
+      if (!req.files || !req.files.tutorial) {
+        return res.status(400).json({ error: 'No tutorial file uploaded' });
       }
+      
+      const tutorialFile = req.files.tutorial[0];
+      const thumbnailFile = req.files.thumbnail ? req.files.thumbnail[0] : null;
       
       // COMMENTED OUT: User verification
       /*
@@ -29,26 +32,43 @@ class TutorialController {
       }
       */
       
-      // Generate S3 key
+      // Generate S3 key for tutorial
       const timestamp = Date.now();
-      const filename = `${timestamp}-${req.file.originalname.replace(/\s+/g, '-')}`;
+      const filename = `${timestamp}-${tutorialFile.originalname.replace(/\s+/g, '-')}`;
       const s3Key = `tutorials/${tutorialData.type}/${filename}`;
       
-      // Upload file to S3
+      // Upload tutorial file to S3
       const fileUrl = await s3Service.uploadFile(
-        req.file.buffer,
+        tutorialFile.buffer,
         s3Key,
-        req.file.mimetype
+        tutorialFile.mimetype
       );
+
+      let thumbnailUrl = null;
+      let thumbnailS3Key = null;
+
+      // Handle thumbnail upload if provided
+      if (thumbnailFile) {
+        const thumbnailFilename = `${timestamp}-thumbnail-${thumbnailFile.originalname.replace(/\s+/g, '-')}`;
+        thumbnailS3Key = `tutorials/thumbnails/${thumbnailFilename}`;
+        
+        thumbnailUrl = await s3Service.uploadFile(
+          thumbnailFile.buffer,
+          thumbnailS3Key,
+          thumbnailFile.mimetype
+        );
+      }
       
       // Create tutorial in database
       const tutorial = new Tutorial({
         ...tutorialData,
         fileUrl,
         s3Key,
+        thumbnailUrl,
+        thumbnailS3Key,
         createdBy: req.body.createdBy,
-        fileSize: req.file.size,
-        fileType: req.file.mimetype
+        fileSize: tutorialFile.size,
+        fileType: tutorialFile.mimetype
       });
       
       await tutorial.save();
@@ -61,6 +81,7 @@ class TutorialController {
         description: tutorial.description,
         type: tutorial.type,
         fileUrl,
+        thumbnailUrl,
         createdAt: tutorial.createdAt
       });
     } catch (error) {
@@ -169,28 +190,59 @@ class TutorialController {
       // Update tutorial
       Object.assign(tutorial, tutorialData);
       
-      // Handle file update if file is provided
-      if (req.file) {
-        // Delete old file
-        await s3Service.deleteFile(tutorial.s3Key);
-        
-        // Generate new S3 key
-        const timestamp = Date.now();
-        const filename = `${timestamp}-${req.file.originalname.replace(/\s+/g, '-')}`;
-        const s3Key = `tutorials/${tutorial.type}/${filename}`;
-        
-        // Upload new file
-        const fileUrl = await s3Service.uploadFile(
-          req.file.buffer,
-          s3Key,
-          req.file.mimetype
-        );
-        
-        // Update tutorial with new file info
-        tutorial.fileUrl = fileUrl;
-        tutorial.s3Key = s3Key;
-        tutorial.fileSize = req.file.size;
-        tutorial.fileType = req.file.mimetype;
+      // Handle file updates if files are provided
+      if (req.files) {
+        // Handle main tutorial file update
+        if (req.files.tutorial) {
+          const tutorialFile = req.files.tutorial[0];
+          
+          // Delete old file
+          await s3Service.deleteFile(tutorial.s3Key);
+          
+          // Generate new S3 key
+          const timestamp = Date.now();
+          const filename = `${timestamp}-${tutorialFile.originalname.replace(/\s+/g, '-')}`;
+          const s3Key = `tutorials/${tutorial.type}/${filename}`;
+          
+          // Upload new file
+          const fileUrl = await s3Service.uploadFile(
+            tutorialFile.buffer,
+            s3Key,
+            tutorialFile.mimetype
+          );
+          
+          // Update tutorial with new file info
+          tutorial.fileUrl = fileUrl;
+          tutorial.s3Key = s3Key;
+          tutorial.fileSize = tutorialFile.size;
+          tutorial.fileType = tutorialFile.mimetype;
+        }
+
+        // Handle thumbnail update
+        if (req.files.thumbnail) {
+          const thumbnailFile = req.files.thumbnail[0];
+          
+          // Delete old thumbnail if exists
+          if (tutorial.thumbnailS3Key) {
+            await s3Service.deleteFile(tutorial.thumbnailS3Key);
+          }
+          
+          // Generate new thumbnail S3 key
+          const timestamp = Date.now();
+          const thumbnailFilename = `${timestamp}-thumbnail-${thumbnailFile.originalname.replace(/\s+/g, '-')}`;
+          const thumbnailS3Key = `tutorials/thumbnails/${thumbnailFilename}`;
+          
+          // Upload new thumbnail
+          const thumbnailUrl = await s3Service.uploadFile(
+            thumbnailFile.buffer,
+            thumbnailS3Key,
+            thumbnailFile.mimetype
+          );
+          
+          // Update tutorial with new thumbnail info
+          tutorial.thumbnailUrl = thumbnailUrl;
+          tutorial.thumbnailS3Key = thumbnailS3Key;
+        }
       }
       
       await tutorial.save();
@@ -203,6 +255,7 @@ class TutorialController {
         description: tutorial.description,
         type: tutorial.type,
         fileUrl: tutorial.fileUrl,
+        thumbnailUrl: tutorial.thumbnailUrl,
         updatedAt: tutorial.updatedAt
       });
     } catch (error) {
@@ -228,8 +281,11 @@ class TutorialController {
       }
       */
       
-      // Delete file from S3
+      // Delete files from S3
       await s3Service.deleteFile(tutorial.s3Key);
+      if (tutorial.thumbnailS3Key) {
+        await s3Service.deleteFile(tutorial.thumbnailS3Key);
+      }
       
       // Delete tutorial from database
       await tutorial.deleteOne();
