@@ -1,44 +1,55 @@
 const express = require('express');
 const cors = require('cors');
-const { port } = require('./config/config');
 const authRoutes = require('./routes/authRoutes');
-const errorHandler = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
-const dotenv = require('dotenv');
-
-// Load environment variables
-dotenv.config();
+const admin = require('./config/firebase');
+const config = require('./config/config');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Root endpoint - basic service info
+app.get('/', (req, res) => {
+  res.json({
+    service: 'AutoAlert Auth Service',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth'
+    }
+  });
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'UP',
+    timestamp: new Date(),
+    service: 'auth-service',
+    firebase: 'connected'
+  });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', service: 'auth-service' });
-});
-
-// Error handler
-app.use(errorHandler);
-
-// Error handling
+// Error handling middleware
 app.use((err, req, res, next) => {
-    logger.error(err.stack);
-    res.status(500).json({
-        success: false,
-        error: 'Internal Server Error',
-        message: err.message
-    });
+  logger.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Internal Server Error',
+    message: err.message
+  });
 });
 
 // Start server
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => {
-  logger.info(`Auth service running on port ${PORT}`);
+const port = process.env.PORT || 3002;
+app.listen(port, () => {
+  logger.info(`Auth service listening on port ${port}`);
+  logger.info(`Environment: ${config.env}`);
 });

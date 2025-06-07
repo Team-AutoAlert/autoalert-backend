@@ -32,6 +32,8 @@ jobs:
       run: |
         echo "Creating deployment package..."
         cd auth-service
+        # Remove local Firebase service account if exists
+        rm -f firebase-service-account.json
         zip -r ../release.zip ./*
         echo "Deployment package created successfully"
       
