@@ -1,5 +1,6 @@
 const twilio = require('twilio');
 const Device = require('../models/device');
+const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 
 class NotificationService {
@@ -27,24 +28,41 @@ class NotificationService {
 
     async registerDevice(userId, phoneNumber) {
         try {
+            // Check MongoDB connection
+            if (mongoose.connection.readyState !== 1) {
+                logger.error('MongoDB is not connected. Current state:', mongoose.connection.readyState);
+                throw new Error('Database connection is not available');
+            }
+
             // Validate phone number format (E.164 format)
             if (!phoneNumber.startsWith('+')) {
                 phoneNumber = '+' + phoneNumber;
             }
 
-            const device = await Device.findOneAndUpdate(
-                { phoneNumber },
-                { 
-                    userId,
-                    lastUsed: new Date() 
-                },
-                { upsert: true, new: true }
-            );
+            // Create a new device document
+            const device = new Device({
+                userId,
+                phoneNumber,
+                lastUsed: new Date()
+            });
 
-            logger.info(`Device registered successfully for user: ${userId}`);
-            return device;
+            // Save the device - this will create the database and collection if they don't exist
+            const savedDevice = await device.save();
+            
+            logger.info(`Device registered successfully for user: ${userId}`, {
+                deviceId: savedDevice._id,
+                database: mongoose.connection.db.databaseName,
+                collection: Device.collection.collectionName
+            });
+
+            return savedDevice;
         } catch (error) {
-            logger.error('Error registering device:', error);
+            logger.error('Error registering device:', {
+                error: error.message,
+                stack: error.stack,
+                userId,
+                phoneNumber
+            });
             throw error;
         }
     }
