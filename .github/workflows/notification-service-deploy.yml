@@ -4,7 +4,6 @@ on:
   push:
     branches: 
       - main
-      - feature/AA-043-service-deployemt-confige
     paths:
       - 'notification-service/**'
       - '.github/workflows/notification-service-deploy.yml'
