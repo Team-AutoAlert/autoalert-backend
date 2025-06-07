@@ -25,16 +25,22 @@ jobs:
       working-directory: ./auth-service
       run: |
         echo "Installing dependencies..."
-        npm install --production
+        npm ci
         echo "Dependencies installed successfully"
       
     - name: Prepare for deployment
       run: |
         echo "Creating deployment package..."
         cd auth-service
-        # Remove local Firebase service account if exists
-        rm -f firebase-service-account.json
-        zip -r ../release.zip ./*
+        # Create a clean deployment package
+        mkdir deploy
+        # Copy only necessary files
+        cp -r src package*.json deploy/
+        cd deploy
+        # Install production dependencies
+        npm ci --production
+        # Create the zip file
+        zip -r ../../release.zip ./*
         echo "Deployment package created successfully"
       
     - name: Login to Azure
