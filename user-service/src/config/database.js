@@ -5,14 +5,16 @@ const { mongoUri } = require('./config');
 const connectDB = async () => {
   try {
     await mongoose.connect(mongoUri, {
-      dbName: 'user_service_db',
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
+      socketTimeoutMS: 45000, // Increase socket timeout
     });
-    logger.info('User Service DB connected successfully');
+    logger.info('MongoDB connected successfully');
   } catch (error) {
-    logger.error('Database connection error:', error);
-    process.exit(1);
+    logger.error('MongoDB connection error:', error);
+    // Don't exit process on connection error, let it retry
+    throw error;
   }
 };
 
