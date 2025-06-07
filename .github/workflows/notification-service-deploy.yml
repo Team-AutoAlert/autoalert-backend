@@ -13,7 +13,7 @@ on:
 env:
   AZURE_WEBAPP_NAME: autoalert-notification-service
   AZURE_WEBAPP_PACKAGE_PATH: notification-service
-  NODE_VERSION: '18.x'
+  NODE_VERSION: '20.x'
 
 jobs:
   build-and-deploy:
