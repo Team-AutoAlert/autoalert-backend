@@ -5,7 +5,7 @@ const env = process.env.NODE_ENV || 'development';
 // Production URLs
 const productionUrls = {
   userService: 'https://autoalert-user-service-dtfedwetdvaahzft.eastus-01.azurewebsites.net/api',
-  notificationService: 'https://autoalert-notification-service-e9abdzg2bee5gcd2.eastus-01.azurewebsites.net/api'  // This will be updated when notification service is deployed
+  notificationService: 'https://autoalert-notification-service-e9abdzg2bee5gcd2.eastus-01.azurewebsites.net'  // This will be updated when notification service is deployed
 };
 
 // Development URLs
