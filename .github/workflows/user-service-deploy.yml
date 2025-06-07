@@ -24,11 +24,16 @@ jobs:
     - name: Install dependencies
       working-directory: ./user-service
       run: |
-        npm ci
-        npm run build
+        echo "Installing dependencies..."
+        npm install --production
+        echo "Dependencies installed successfully"
       
-    - name: Zip artifact for deployment
-      run: zip -r release.zip ./user-service/*
+    - name: Prepare for deployment
+      run: |
+        echo "Creating deployment package..."
+        cd user-service
+        zip -r ../release.zip ./*
+        echo "Deployment package created successfully"
       
     - name: Login to Azure
       uses: azure/login@v1
