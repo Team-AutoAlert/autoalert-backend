@@ -1,4 +1,4 @@
-name: Deploy Auth ServiceAdd commentMore actions
+name: Deploy Auth Service
 
 on:
   push:
