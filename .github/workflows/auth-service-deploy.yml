@@ -1,4 +1,4 @@
-name: Deploy Auth Service
+name: Deploy Auth ServiceAdd commentMore actions
 
 on:
   push:
@@ -25,22 +25,14 @@ jobs:
       working-directory: ./auth-service
       run: |
         echo "Installing dependencies..."
-        npm ci
+        npm install --production
         echo "Dependencies installed successfully"
       
     - name: Prepare for deployment
       run: |
         echo "Creating deployment package..."
         cd auth-service
-        # Create a clean deployment package
-        mkdir deploy
-        # Copy only necessary files
-        cp -r src package*.json deploy/
-        cd deploy
-        # Install production dependencies
-        npm ci --production
-        # Create the zip file
-        zip -r ../../release.zip ./*
+        zip -r ../release.zip ./*
         echo "Deployment package created successfully"
       
     - name: Login to Azure
