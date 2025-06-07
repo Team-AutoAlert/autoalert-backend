@@ -18,26 +18,32 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: notification-service
-
+    
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v2
       with:
         node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
-        cache-dependency-path: './notification-service/package-lock.json'
-
-    - name: Install Dependencies
-      run: npm ci
+        
+    - name: Install dependencies
+      working-directory: ./notification-service
+      run: |
+        echo "Installing dependencies..."
+        npm install --production
+        echo "Dependencies installed successfully"
+      
+    - name: Prepare for deployment
+      run: |
+        echo "Creating deployment package..."
+        cd notification-service
+        zip -r ../release.zip ./*
+        echo "Deployment package created successfully"
 
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
       with:
         app-name: ${{ env.AZURE_WEBAPP_NAME }}
         publish-profile: ${{ secrets.NOTIFICATION_SERVICE_PUBLISH_PROFILE }}
-        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} 
+        package: release.zip 
