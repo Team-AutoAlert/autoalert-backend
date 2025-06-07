@@ -1,0 +1,41 @@
+name: Deploy Notification Service
+
+on:
+  push:
+    branches: 
+      - main
+      - feature/AA-043-service-deployemt-confige
+    paths:
+      - 'notification-service/**'
+      - '.github/workflows/notification-service-deploy.yml'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: autoalert-notification-service
+  AZURE_WEBAPP_PACKAGE_PATH: notification-service
+  NODE_VERSION: '18.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        cache-dependency-path: notification-service/package-lock.json
+
+    - name: Install Dependencies
+      run: |
+        cd notification-service
+        npm ci
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.NOTIFICATION_SERVICE_PUBLISH_PROFILE }}
+        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} 
