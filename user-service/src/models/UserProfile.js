@@ -17,6 +17,12 @@ const userProfileSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  language: {
+    type: String,
+    required: true,
+    enum: ['en', 'si', 'ta'], // English, Sinhala, Tamil
+    default: 'en'
+  },
   // Driver-specific fields
   driverDetails: {
     licenseNumber: String,
