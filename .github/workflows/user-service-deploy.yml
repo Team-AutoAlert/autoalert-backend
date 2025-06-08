@@ -4,6 +4,7 @@ on:
   push:
     branches: 
       - main
+      - feature/AA-04-user-service-vehicles
     paths:
       - 'user-service/**'
       - '.github/workflows/user-service-deploy.yml'
