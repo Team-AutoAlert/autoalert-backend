@@ -1,11 +1,11 @@
 class AuthError extends Error {
-  constructor(message, originalError = null) {
-    super(message);
-    this.name = 'AuthError';
-    this.originalError = originalError;
+    constructor(message, originalError = null) {
+      super(message);
+      this.name = 'AuthError';
+      this.originalError = originalError;
+    }
   }
-}
-
-module.exports = {
-  AuthError
-}; 
+  
+  module.exports = {
+    AuthError
+  }; 
