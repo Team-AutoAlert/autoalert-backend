@@ -25,7 +25,7 @@ const nearbyMechanicSchema = new mongoose.Schema({
             required: true
         }
     },
-    vehicleId: {
+    registrationNumber: {
         type: String,
         required: true
     },

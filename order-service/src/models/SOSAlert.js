@@ -5,7 +5,7 @@ const sosAlertSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    vehicleId: {
+    registrationNumber: {
         type: String,
         required: true
     },
