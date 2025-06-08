@@ -14,7 +14,7 @@ Creates a new SOS alert when a driver needs assistance.
 ```json
 {
     "driverId": "string",
-    "vehicleId": "string",
+    "registrationNumber": "string",
     "communicationMode": "audio|video",
     "breakdownDetails": "string"
 }
