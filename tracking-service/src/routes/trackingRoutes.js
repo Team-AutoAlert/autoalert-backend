@@ -8,6 +8,9 @@ router.post('/location', trackingController.updateLocation);
 // Find nearby mechanics
 router.get('/mechanics/nearby', trackingController.findNearbyMechanics);
 
+// New route for listing all nearby mechanics
+router.post('/mechanics/list-nearby', trackingController.listAllNearbyMechanics);
+
 // Tracking sessions
 router.post('/sessions', trackingController.startTracking);
 router.put('/sessions/:sessionId', trackingController.updateTrackingSession);

@@ -9,15 +9,15 @@ router.get('/list/:driverId', nearbyMechanicController.listNearbyMechanics);
 router.post('/hire/:mechanicId', nearbyMechanicController.sendHireRequest);
 
 // List hire requests by mechanic
-router.get('/requests/mechanic/:mechanicId', nearbyMechanicController.listHireRequests);
+router.get('/requests/:mechanicId', nearbyMechanicController.listHireRequests);
 
 // Accept hire request
-router.post('/requests/:requestId/accept', nearbyMechanicController.acceptHireRequest);
+router.post('/requests/accept', nearbyMechanicController.acceptHireRequest);
 
 // Track mechanic
 router.get('/track/:requestId', nearbyMechanicController.trackMechanic);
 
 // Complete job and generate bill
-router.post('/requests/:requestId/complete', nearbyMechanicController.completeJob);
+router.post('/requests/complete', nearbyMechanicController.completeJob);
 
 module.exports = router; 
