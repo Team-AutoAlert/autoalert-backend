@@ -11,7 +11,12 @@ exports.listNearbyMechanics = async (req, res) => {
 
         // Get driver's location from user service
         const driverResponse = await axios.get(`${config.userServiceUrl}/api/users/${driverId}`);
-        const driver = driverResponse.data;
+        const driver = driverResponse.data.data;
+
+        logger.info('Driver data received:', {
+            driverId,
+            location: driver.location
+        });
 
         if (!driver || !driver.location || !driver.location.coordinates) {
             return res.status(400).json({
@@ -22,24 +27,31 @@ exports.listNearbyMechanics = async (req, res) => {
 
         const [longitude, latitude] = driver.location.coordinates;
 
+        logger.info('Fetching nearby mechanics with params:', {
+            longitude,
+            latitude,
+            maxDistance
+        });
+
         // Call tracking service to get nearby mechanics
-        const response = await axios.get(`${config.trackingServiceUrl}/api/tracking/mechanics/nearby`, {
-            params: {
-                longitude,
-                latitude,
-                maxDistance
-            }
+        const response = await axios.post(`${config.trackingServiceUrl}/api/tracking/mechanics/list-nearby`, {
+            latitude,
+            longitude
         });
 
-        const nearbyMechanics = response.data.data;
-
-        res.json({
-            success: true,
-            data: nearbyMechanics,
-            message: 'Successfully retrieved nearby mechanics'
+        logger.info('Tracking service response:', {
+            status: response.status,
+            data: response.data
         });
+
+        // Return the mechanics data directly from tracking service
+        res.json(response.data);
     } catch (error) {
-        logger.error('Error listing nearby mechanics:', error);
+        logger.error('Error listing nearby mechanics:', {
+            error: error.message,
+            stack: error.stack,
+            response: error.response?.data
+        });
         res.status(500).json({
             success: false,
             message: 'Error retrieving nearby mechanics',
@@ -55,13 +67,12 @@ exports.sendHireRequest = async (req, res) => {
         const { 
             driverId, 
             vehicleId, 
-            breakdownDetails, 
-            requiredExpertise 
+            breakdownDetails
         } = req.body;
 
         // Get driver's location from user service
         const driverResponse = await axios.get(`${config.userServiceUrl}/api/users/${driverId}`);
-        const driver = driverResponse.data;
+        const driver = driverResponse.data.data;
 
         if (!driver || !driver.location || !driver.location.coordinates) {
             return res.status(400).json({
@@ -82,8 +93,7 @@ exports.sendHireRequest = async (req, res) => {
             },
             status: 'pending',
             vehicleId,
-            breakdownDetails,
-            requiredExpertise
+            breakdownDetails
         });
 
         await hireRequest.save();
@@ -150,7 +160,7 @@ exports.listHireRequests = async (req, res) => {
 // Accept hire request
 exports.acceptHireRequest = async (req, res) => {
     try {
-        const { requestId } = req.params;
+        const { requestId } = req.body;
         const { mechanicId } = req.body;
 
         const request = await NearbyMechanic.findOne({
@@ -167,6 +177,7 @@ exports.acceptHireRequest = async (req, res) => {
         }
 
         // Get estimated arrival time from tracking service
+        /* Commenting out for now
         const trackingResponse = await axios.get(`${config.trackingServiceUrl}/api/tracking/mechanics/estimate-arrival`, {
             params: {
                 mechanicId,
@@ -175,15 +186,16 @@ exports.acceptHireRequest = async (req, res) => {
         });
 
         const { estimatedTime } = trackingResponse.data;
+        */
 
         request.status = 'accepted';
-        request.estimatedArrivalTime = new Date(Date.now() + estimatedTime * 1000);
+        // request.estimatedArrivalTime = new Date(Date.now() + estimatedTime * 1000);
         await request.save();
 
         // Notify driver
         await axios.post(`${config.notificationServiceUrl}/api/notifications/send`, {
             userId: request.driverId,
-            message: `A mechanic has accepted your request. Estimated arrival time: ${request.estimatedArrivalTime}`
+            message: `A mechanic has accepted your request.` // Removed estimated time from message
         });
 
         res.json({
@@ -244,63 +256,74 @@ exports.trackMechanic = async (req, res) => {
 // Complete job and generate bill
 exports.completeJob = async (req, res) => {
     try {
-        const { requestId } = req.params;
-        const { services } = req.body;
-        const mechanicId = req.user._id; // Assuming user is authenticated
+        const { requestId, services, mechanicId } = req.body;
 
+        if (!requestId || !services || !mechanicId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Request ID, services, and mechanic ID are required'
+            });
+        }
+
+        // Find and update the hire request
         const request = await NearbyMechanic.findOne({
             _id: requestId,
-            mechanicId,
+            mechanicId: mechanicId,
             status: 'accepted'
         });
 
         if (!request) {
             return res.status(404).json({
                 success: false,
-                message: 'Request not found or not accepted'
+                message: 'Hire request not found or not in accepted state'
             });
         }
 
         // Calculate total amount
         const totalAmount = services.reduce((sum, service) => sum + service.charge, 0);
 
-        // Update request
+        // Update request with completion details
         request.status = 'completed';
-        request.services = services;
-        request.totalAmount = totalAmount;
-        request.completionTime = new Date();
+        request.completionDetails = {
+            services,
+            totalAmount,
+            completedAt: new Date()
+        };
+
         await request.save();
 
-        // Generate bill
-        const billResponse = await axios.post(`${config.paymentServiceUrl}/api/payments/bills`, {
-            driverId: request.driverId,
-            mechanicId: request.mechanicId,
-            amount: totalAmount,
-            services: services,
-            orderId: request._id,
-            orderType: 'nearby_mechanic'
-        });
-
-        request.billId = billResponse.data.data._id;
-        await request.save();
-
-        // Notify driver
-        await axios.post(`${config.notificationServiceUrl}/api/notification/send`, {
-            userId: request.driverId,
-            title: 'Job Completed',
-            message: `Your service has been completed. Total amount: $${totalAmount}`,
-            data: {
+        // Generate bill through payment service
+        try {
+            const billResponse = await axios.post(`${config.paymentServiceUrl}/api/payments/nearby-mech/bills`, {
                 requestId: request._id,
-                billId: request.billId,
-                type: 'job_completed'
-            }
-        });
+                driverId: request.driverId,
+                mechanicId: request.mechanicId,
+                amount: totalAmount,
+                services
+            });
+
+            logger.info('Bill generated successfully:', {
+                requestId: request._id,
+                billId: billResponse.data.billId
+            });
+        } catch (error) {
+            logger.error('Error generating bill:', {
+                error: error.message,
+                requestId: request._id
+            });
+            // Don't fail the request if bill generation fails
+        }
 
         res.json({
             success: true,
             data: {
-                request,
-                bill: billResponse.data.data
+                requestId: request._id,
+                status: request.status,
+                bill: {
+                    totalAmount,
+                    services,
+                    generatedAt: new Date()
+                }
             },
             message: 'Job completed and bill generated successfully'
         });

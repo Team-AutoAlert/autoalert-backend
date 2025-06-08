@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../utils/logger');
+const userController = require('../controllers/userController');
 
 // Create user
 router.post('/', async (req, res) => {
@@ -161,6 +162,80 @@ router.patch('/:userId/verify-email', (req, res) => {
             });
         });
 });
+
+// Update user
+router.patch('/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const updateData = req.body;
+
+        // Remove any fields that shouldn't be updated
+        delete updateData.userId;
+        delete updateData.role;
+        delete updateData.email;
+
+        // Update user
+        const user = await User.findOneAndUpdate(
+            { userId },
+            { $set: updateData },
+            { new: true, runValidators: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        // Update user profile if profile-related fields are present
+        const profileUpdateData = {};
+        if (updateData.phoneNumber) {
+            profileUpdateData.phoneNumber = updateData.phoneNumber;
+        }
+        if (updateData.driverDetails) {
+            profileUpdateData.driverDetails = updateData.driverDetails;
+        }
+        if (updateData.mechanicDetails) {
+            profileUpdateData.mechanicDetails = updateData.mechanicDetails;
+        }
+
+        if (Object.keys(profileUpdateData).length > 0) {
+            const userProfile = await UserProfile.findOneAndUpdate(
+                { userId },
+                { $set: profileUpdateData },
+                { new: true, runValidators: true }
+            );
+
+            if (!userProfile) {
+                logger.warn(`User profile not found for user ${userId}`);
+            }
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (error) {
+        logger.error('Update user error:', error);
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Vehicle Management Routes
+router.get('/:userId/vehicles', userController.getVehicles);
+router.delete('/:userId/vehicles/:vehicleId', userController.deleteVehicle);
+
+// Profile Management Routes
+router.get('/:userId/profile', userController.getUserProfile);
+
+// Search and List Routes
+router.get('/search/phone', userController.findByPhone);
+router.get('/search/email/:email', userController.getUserByEmail);
+router.get('/list', userController.listUsers);
 
 // Vehicle routes
 // Add vehicle
