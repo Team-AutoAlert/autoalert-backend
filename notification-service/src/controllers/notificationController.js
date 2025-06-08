@@ -3,6 +3,7 @@ const { validateDevice, validateNotification, validateBulkNotification } = requi
 const logger = require('../utils/logger');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
+const mongoose = require('mongoose');
 
 const verificationCodes = new Map(); // In production, use Redis or a database
 
@@ -31,17 +32,49 @@ class NotificationController {
 
     async registerDevice(req, res) {
         try {
+            // Check MongoDB connection first
+            if (mongoose.connection.readyState !== 1) {
+                logger.error('MongoDB not connected. Current state:', mongoose.connection.readyState);
+                return res.status(500).json({
+                    error: 'Database connection not available',
+                    details: {
+                        state: mongoose.connection.readyState,
+                        stateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState]
+                    }
+                });
+            }
+
             const { error } = validateDevice(req.body);
             if (error) {
                 return res.status(400).json({ error: error.details[0].message });
             }
 
             const { userId, phoneNumber } = req.body;
-            const device = await notificationService.registerDevice(userId, phoneNumber);
-            res.status(201).json(device);
+            
+            try {
+                const device = await notificationService.registerDevice(userId, phoneNumber);
+                res.status(201).json(device);
+            } catch (dbError) {
+                logger.error('Database operation failed:', dbError);
+                res.status(500).json({
+                    error: 'Database operation failed',
+                    details: {
+                        message: dbError.message,
+                        code: dbError.code,
+                        name: dbError.name
+                    }
+                });
+            }
         } catch (error) {
             logger.error('Error in registerDevice:', error);
-            res.status(500).json({ error: 'Internal server error' });
+            res.status(500).json({
+                error: 'Internal server error',
+                details: {
+                    message: error.message,
+                    type: error.name,
+                    mongoState: mongoose.connection.readyState
+                }
+            });
         }
     }
 

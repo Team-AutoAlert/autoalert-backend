@@ -30,10 +30,32 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('MongoDB connection error:', err));
+// Log MongoDB URI (make sure to mask sensitive info)
+const maskedUri = process.env.MONGODB_URI 
+    ? process.env.MONGODB_URI.replace(/:([^@]+)@/, ':****@')
+    : 'Not set';
+logger.info(`Attempting MongoDB connection with URI: ${maskedUri}`);
+
+// Connect to MongoDB with more detailed error handling
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000 // 5 second timeout
+})
+.then(() => {
+    logger.info('Successfully connected to MongoDB');
+    // Log database name
+    const dbName = mongoose.connection.db.databaseName;
+    logger.info(`Connected to database: ${dbName}`);
+})
+.catch(err => {
+    logger.error('MongoDB connection error:', {
+        error: err.message,
+        code: err.code,
+        name: err.name,
+        stack: err.stack
+    });
+});
 
 // Routes
 app.use('/api/notifications', notificationRoutes);
@@ -48,18 +70,26 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Health check route
+// Health check route with detailed MongoDB status
 app.get('/health', (req, res) => {
+    const mongoStatus = {
+        state: mongoose.connection.readyState,
+        stateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
+        database: mongoose.connection.db?.databaseName || 'not connected',
+        host: mongoose.connection.host || 'not connected'
+    };
+
     res.json({
         status: 'UP',
         timestamp: new Date(),
-        mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+        mongodb: mongoStatus,
+        environment: process.env.NODE_ENV || 'not set'
     });
 });
 
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
-    logger.info(`Notification service running on port ${PORT}`);
+    logger.info(`Notification service running on port ${PORT} in ${process.env.NODE_ENV || 'development'} mode`);
 });
 
 module.exports = app;
