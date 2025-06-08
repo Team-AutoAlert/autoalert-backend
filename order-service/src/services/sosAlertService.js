@@ -32,6 +32,22 @@ class SOSAlertService {
         return await SOSAlert.find({ status: 'active' });
     }
 
+    // Get active alerts for a specific mechanic
+    async getActiveAlertsForMechanic(mechanicId) {
+        try {
+            return await SOSAlert.find({
+                status: 'active',
+                matchedMechanicIds: mechanicId
+            }).sort({ createdAt: -1 });
+        } catch (error) {
+            logger.error('Error getting active alerts for mechanic:', {
+                error: error.message,
+                mechanicId
+            });
+            throw error;
+        }
+    }
+
     // Create a new SOS alert
     async createAlert(alertData) {
         const sosAlert = new SOSAlert({
@@ -121,6 +137,35 @@ class SOSAlertService {
     calculateCharges(duration) {
         const baseRate = config.baseRatePerMinute;
         return duration * baseRate;
+    }
+
+    // Update SOS alert
+    async updateAlert(alertId, updateData) {
+        try {
+            const updatedAlert = await SOSAlert.findByIdAndUpdate(
+                alertId,
+                { $set: updateData },
+                { new: true, runValidators: true }
+            );
+
+            if (!updatedAlert) {
+                throw new Error('SOS alert not found');
+            }
+
+            logger.info('Successfully updated SOS alert', {
+                alertId,
+                updatedFields: Object.keys(updateData)
+            });
+
+            return updatedAlert;
+        } catch (error) {
+            logger.error('Error updating SOS alert:', {
+                error: error.message,
+                alertId,
+                updateData
+            });
+            throw error;
+        }
     }
 }
 

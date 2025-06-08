@@ -3,8 +3,11 @@ const mongoose = require('mongoose');
 const billSchema = new mongoose.Schema({
     alertId: {
         type: mongoose.Schema.Types.ObjectId,
-        required: true,
         ref: 'SOSAlert'
+    },
+    requestId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Nearby'
     },
     driverId: {
         type: String,
@@ -18,6 +21,15 @@ const billSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    orderType: {
+        type: String,
+        required: true
+    },
+    services: [{
+        name: String,
+        description: String,
+        charge: Number
+    }],
     status: {
         type: String,
         enum: ['unpaid', 'paid'],
@@ -25,7 +37,6 @@ const billSchema = new mongoose.Schema({
     },
     callDuration: {
         type: Number,
-        required: true
     },
     createdAt: {
         type: Date,

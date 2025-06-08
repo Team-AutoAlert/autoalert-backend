@@ -41,6 +41,7 @@ exports.generateBill = async (req, res) => {
             mechanicId,
             amount,
             callDuration,
+            orderType: 'sos_alert',
             status: 'unpaid'
         });
 
@@ -61,6 +62,63 @@ exports.generateBill = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error generating bill:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error generating bill',
+            error: error.message
+        });
+    }
+};
+
+// Generate bill for nearby mechanic service
+exports.generateNearbyBill = async (req, res) => {
+    try {
+        const {
+            requestId,
+            driverId,
+            mechanicId,
+            amount,
+            services
+        } = req.body;
+
+        // Validate required fields
+        if (!requestId || !driverId || !mechanicId || !amount || !services) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields'
+            });
+        }
+
+        // Create new bill
+        const bill = new Bill({
+            requestId,
+            driverId,
+            mechanicId,
+            amount,
+            services,
+            orderType: 'nearby_mechanic',
+            status: 'unpaid'
+        });
+
+        await bill.save();
+
+        logger.info('Nearby mechanic bill generated:', {
+            billId: bill._id,
+            requestId,
+            amount,
+            services: services.length
+        });
+
+        res.status(201).json({
+            success: true,
+            data: bill,
+            message: 'Bill generated successfully'
+        });
+    } catch (error) {
+        logger.error('Error generating nearby mechanic bill:', {
+            error: error.message,
+            stack: error.stack
+        });
         res.status(500).json({
             success: false,
             message: 'Error generating bill',
