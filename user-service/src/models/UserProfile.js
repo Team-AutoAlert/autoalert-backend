@@ -26,13 +26,8 @@ const userProfileSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
-    // New vehicle information
+    // Vehicle information
     vehicles: [{
-      vehicleId: {
-        type: String,
-        required: true,
-        unique: true
-      },
       brand: {
         type: String,
         required: true
@@ -48,7 +43,9 @@ const userProfileSchema = new mongoose.Schema({
       },
       year: {
         type: Number,
-        required: true
+        required: true,
+        min: 1900,
+        max: new Date().getFullYear()
       },
       registrationNumber: {
         type: String,
