@@ -7,7 +7,17 @@ const { AuthError } = require('../utils/errors');
 const register = async (req, res) => {
     let firebaseUser = null;
     try {
-        const { userId, email, password, role, firstName, lastName, phoneNumber } = req.body;
+        const { 
+            userId, 
+            email, 
+            password, 
+            role, 
+            firstName, 
+            lastName, 
+            phoneNumber, 
+            language = 'en',  // Default to English if not provided
+            address  // Now a single string
+        } = req.body;
 
         logger.info(`Attempting to create user with ID: ${userId}`);
 
@@ -35,6 +45,8 @@ const register = async (req, res) => {
             lastName,
             phoneNumber,
             status: 'inactive',
+            address,  // Add address as string
+            language, // Add language preference
             location: {
                 type: 'Point',
                 coordinates: [0, 0]

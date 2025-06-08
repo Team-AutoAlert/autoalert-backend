@@ -16,6 +16,7 @@ router.post('/', async (req, res) => {
             userId: user.userId,
             role: user.role,
             phoneNumber: user.phoneNumber,
+            language: user.language || 'en',
             ...(user.role === 'driver' ? { driverDetails: {} } : { mechanicDetails: {} })
         });
         await userProfile.save();
@@ -224,10 +225,6 @@ router.patch('/:userId', async (req, res) => {
         });
     }
 });
-
-// Vehicle Management Routes
-router.get('/:userId/vehicles', userController.getVehicles);
-router.delete('/:userId/vehicles/:vehicleId', userController.deleteVehicle);
 
 // Profile Management Routes
 router.get('/:userId/profile', userController.getUserProfile);
