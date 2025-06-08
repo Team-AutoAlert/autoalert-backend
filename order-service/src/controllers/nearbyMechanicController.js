@@ -66,7 +66,7 @@ exports.sendHireRequest = async (req, res) => {
         const { mechanicId } = req.params;
         const { 
             driverId, 
-            vehicleId, 
+            registrationNumber, 
             breakdownDetails
         } = req.body;
 
@@ -92,7 +92,7 @@ exports.sendHireRequest = async (req, res) => {
                 coordinates: [longitude, latitude]
             },
             status: 'pending',
-            vehicleId,
+            registrationNumber,
             breakdownDetails
         });
 
@@ -101,7 +101,7 @@ exports.sendHireRequest = async (req, res) => {
         // Notify mechanic
         await axios.post(`${config.notificationServiceUrl}/api/notifications/send`, {
             userId: mechanicId,
-            message: `You have received a new hire request. Vehicle: ${vehicleId}, Issue: ${breakdownDetails}`,
+            message: `You have received a new hire request. Vehicle: ${registrationNumber}, Issue: ${breakdownDetails}`,
         });
 
         res.status(201).json({

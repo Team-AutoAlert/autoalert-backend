@@ -23,7 +23,7 @@ class SOSAlertController {
         try {
             const {
                 driverId,
-                vehicleId,
+                registrationNumber,
                 communicationMode,
                 breakdownDetails
             } = req.body;
@@ -36,7 +36,7 @@ class SOSAlertController {
             
             const sosAlert = await sosAlertService.createAlert({
                 driverId,
-                vehicleId,
+                registrationNumber,
                 communicationMode,
                 breakdownDetails,
                 requiredSpecializations // Add this field to the alert
@@ -71,7 +71,7 @@ class SOSAlertController {
             logger.info('Successfully created SOS alert', {
                 alertId: sosAlert._id,
                 driverId,
-                vehicleId,
+                registrationNumber,
                 requiredSpecializations,
                 notificationStatus
             });
@@ -102,7 +102,7 @@ class SOSAlertController {
 
                     // Find the specific vehicle from driver's vehicles
                     const vehicleDetails = driverProfile.driverDetails?.vehicles?.find(
-                        vehicle => vehicle.vehicleId === alert.vehicleId
+                        vehicle => vehicle.registrationNumber === alert.registrationNumber
                     );
 
                     return {
@@ -576,7 +576,7 @@ class SOSAlertController {
 
                     // Find the specific vehicle from driver's vehicles
                     const vehicleDetails = driverProfile.driverDetails?.vehicles?.find(
-                        vehicle => vehicle.vehicleId === alert.vehicleId
+                        vehicle => vehicle.registrationNumber === alert.registrationNumber
                     );
 
                     return {
