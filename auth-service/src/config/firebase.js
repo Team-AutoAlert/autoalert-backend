@@ -15,4 +15,4 @@ try {
     throw error;
 }
 
-module.exports = admin; 
+module.exports = admin;
