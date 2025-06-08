@@ -1,27 +1,25 @@
 {
-  "name": "api-gateway",
+  "name": "order-service",
   "version": "1.0.0",
-  "description": "API Gateway for AutoAlert microservices",
+  "description": "Order service for handling SOS alerts and related functionality",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "helmet": "^7.1.0",
-    "http-proxy-middleware": "^2.0.6",
-    "morgan": "^1.10.0"
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.1",
+    "morgan": "^1.10.0",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.1"
   }
 }
