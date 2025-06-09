@@ -335,4 +335,53 @@ exports.completeJob = async (req, res) => {
             error: error.message
         });
     }
+};
+
+// Get request status and mechanic details
+exports.getRequestStatus = async (req, res) => {
+    try {
+        const { requestId } = req.params;
+
+        const request = await NearbyMechanic.findById(requestId);
+        if (!request) {
+            return res.status(404).json({
+                success: false,
+                message: 'Request not found'
+            });
+        }
+
+        // If request is still pending
+        if (request.status === 'pending') {
+            return res.json({
+                success: true,
+                data: {
+                    requestId: request._id,
+                    status: request.status,
+                    message: 'No mechanic has accepted this request yet'
+                }
+            });
+        }
+
+        // If request has been accepted, get mechanic details
+        const mechanicDetails = await axios.get(`${process.env.USER_SERVICE_URL}/api/users/${request.mechanicId}`);
+        
+        res.json({
+            success: true,
+            data: {
+                requestId: request._id,
+                status: request.status,
+                mechanic: {
+                    mechanicId: request.mechanicId,
+                    coordinates: mechanicDetails.data.data.location.coordinates,
+                }
+            }
+        });
+    } catch (error) {
+        logger.error('Error getting request status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error retrieving request status',
+            error: error.message
+        });
+    }
 }; 
