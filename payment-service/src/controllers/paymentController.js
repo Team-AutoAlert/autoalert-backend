@@ -1,5 +1,6 @@
 const Bill = require('../models/Bill');
 const logger = require('../utils/logger');
+const PayHere = require('../utils/payhere');
 
 // Calculate charges based on call duration and other factors
 const calculateCharges = (callDuration) => {
@@ -246,8 +247,8 @@ exports.getBillsByMechanic = async (req, res) => {
 // Process payment for a bill
 exports.processPayment = async (req, res) => {
     try {
-        const { billId } = req.params;
-        const { paymentMethod, transactionId } = req.body;
+        const { billId } = req.body;
+        const { paymentMethod } = req.body;
 
         const bill = await Bill.findById(billId);
         if (!bill) {
@@ -264,35 +265,55 @@ exports.processPayment = async (req, res) => {
             });
         }
 
-        // Update bill with payment details
-        bill.status = 'paid';
-        bill.paidAt = new Date();
-        bill.paymentDetails = {
-            paymentMethod,
-            transactionId,
-            paymentDate: new Date(),
-            paymentStatus: 'success'
+        const apiGatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+
+        // Initialize PayHere payment
+        const payhereConfig = {
+            merchant_id: process.env.PAYHERE_MERCHANT_ID,
+            return_url: `${apiGatewayUrl}/api/payments/return`,
+            cancel_url: `${apiGatewayUrl}/api/payments/cancel`,
+            notify_url: `${apiGatewayUrl}/api/payments/notify`,
+            first_name: 'Customer',
+            last_name: 'Fernando',
+            email: bill.driverId ? `${bill.driverId}@autoalert.com` : 'customer@autoalert.com',
+            phone: '0771234567', // Default phone number
+            address: 'No 1, Main Street',
+            city: 'Colombo',
+            country: 'Sri Lanka',
+            order_id: `ORDER_${billId}`,
+            currency: { value: 'LKR' },
+            amount: { value: bill.amount.toFixed(2) }
         };
 
+        // Create PayHere payment session
+        const payhere = new PayHere(payhereConfig);
+        const paymentSession = await payhere.createPaymentSession();
+
+        // Update bill with payment method and mark as paid
+        bill.paymentMethod = paymentMethod;
+        bill.status = 'paid';
+        bill.paymentDate = new Date();
         await bill.save();
 
-        logger.info('Payment processed successfully', {
-            billId: bill._id,
-            amount: bill.amount,
-            paymentMethod,
-            timestamp: new Date()
-        });
-
-        res.json({
+        // Return payment session details
+        return res.json({
             success: true,
-            data: bill,
-            message: 'Payment processed successfully'
+            data: {
+                paymentUrl: paymentSession.payment_url,
+                paymentData: paymentSession.payment_data,
+                billId: bill._id,
+                amount: bill.amount
+            },
+            message: 'Payment session created successfully'
         });
     } catch (error) {
-        logger.error('Error processing payment:', error);
-        res.status(500).json({
+        logger.error('Payment processing failed:', {
+            error: error.message,
+            stack: error.stack
+        });
+        return res.status(500).json({
             success: false,
-            message: 'Error processing payment',
+            message: 'Payment processing failed',
             error: error.message
         });
     }
@@ -327,6 +348,41 @@ exports.getPaymentStatus = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error retrieving payment status',
+            error: error.message
+        });
+    }
+};
+
+// Get bill by order ID (requestId or alertId)
+exports.getBillByOrderId = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+
+        // Try to find bill by alertId first
+        let bill = await Bill.findOne({ alertId: orderId });
+        
+        // If not found, try to find by requestId
+        if (!bill) {
+            bill = await Bill.findOne({ requestId: orderId });
+        }
+
+        if (!bill) {
+            return res.status(404).json({
+                success: false,
+                message: 'Bill not found for the given order ID'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: bill,
+            message: 'Successfully retrieved bill'
+        });
+    } catch (error) {
+        logger.error('Error getting bill by order ID:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error retrieving bill',
             error: error.message
         });
     }
