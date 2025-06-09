@@ -5,14 +5,33 @@ const { mongoUri } = require('./config');
 const connectDB = async () => {
   try {
     await mongoose.connect(mongoUri, {
-      dbName: 'user_service_db',
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      retryWrites: true,
+      w: 'majority',
+      retryReads: true
     });
-    logger.info('User Service DB connected successfully');
+    logger.info('MongoDB connected successfully');
+    
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      logger.error('MongoDB connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      logger.warn('MongoDB disconnected. Attempting to reconnect...');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      logger.info('MongoDB reconnected successfully');
+    });
+
   } catch (error) {
-    logger.error('Database connection error:', error);
-    process.exit(1);
+    logger.error('MongoDB connection error:', error);
+    // Don't exit process on connection error, let it retry
+    throw error;
   }
 };
 

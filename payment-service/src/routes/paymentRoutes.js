@@ -4,12 +4,14 @@ const paymentController = require('../controllers/paymentController');
 
 // Bill generation and management
 router.post('/bills', paymentController.generateBill);
+router.post('/nearby-mech/bills', paymentController.generateNearbyBill);
 router.get('/bills', paymentController.getAllBills);
+router.get('/bills/by-order/:orderId', paymentController.getBillByOrderId);
 router.get('/bills/driver/:driverId', paymentController.getBillsByDriver);
 router.get('/bills/mechanic/:mechanicId', paymentController.getBillsByMechanic);
 
 // Payment processing
-router.post('/bills/:billId/process', paymentController.processPayment);
+router.post('/bills/process', paymentController.processPayment);
 router.get('/bills/:billId/status', paymentController.getPaymentStatus);
 
 module.exports = router; 

@@ -5,7 +5,7 @@ const sosAlertSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    vehicleId: {
+    registrationNumber: {
         type: String,
         required: true
     },
@@ -16,16 +16,19 @@ const sosAlertSchema = new mongoose.Schema({
     },
     communicationMode: {
         type: String,
-        enum: ['voice', 'video'],
+        enum: ['audio', 'video'],
         required: true
     },
     breakdownDetails: {
         type: String,
         required: true
     },
-    requiredExpertise: [{
+    requiredSpecializations: [{
         type: String,
         required: true
+    }],
+    matchedMechanicIds: [{
+        type: String
     }],
     mechanicId: {
         type: String,

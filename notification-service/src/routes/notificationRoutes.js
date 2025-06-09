@@ -5,6 +5,7 @@ const VerificationCode = require('../models/VerificationCode');
 const logger = require('../utils/logger');
 const { sendSMS } = require('../utils/smsService');
 const { sendEmail } = require('../utils/emailService');
+const mongoose = require('mongoose');
 
 // Device registration
 router.post('/devices', notificationController.registerDevice);
@@ -186,6 +187,41 @@ router.post('/verify-email', async (req, res) => {
 // Health check
 router.get('/health', (req, res) => {
     res.json({ status: 'UP', timestamp: new Date() });
+});
+
+// Debug endpoint for MongoDB connection status
+router.get('/debug/mongodb', (req, res) => {
+    try {
+        const connectionState = {
+            readyState: mongoose.connection.readyState,
+            stateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
+            database: mongoose.connection.db?.databaseName || 'not connected',
+            host: mongoose.connection.host || 'not connected',
+            uri: process.env.MONGODB_URI ? process.env.MONGODB_URI.replace(/:([^@]+)@/, ':****@') : 'not set'
+        };
+
+        // Get all collections
+        if (mongoose.connection.db) {
+            mongoose.connection.db.listCollections().toArray((err, collections) => {
+                if (err) {
+                    logger.error('Error listing collections:', err);
+                    connectionState.collections = `Error: ${err.message}`;
+                } else {
+                    connectionState.collections = collections.map(c => c.name);
+                }
+                res.json(connectionState);
+            });
+        } else {
+            connectionState.collections = [];
+            res.json(connectionState);
+        }
+    } catch (error) {
+        logger.error('Error in debug endpoint:', error);
+        res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
+    }
 });
 
 module.exports = router;

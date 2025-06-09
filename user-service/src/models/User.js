@@ -43,11 +43,14 @@ const userSchema = new mongoose.Schema({
     default: 'active'
   },
   address: {
-    street: String,
-    city: String,
-    state: String,
-    postalCode: String,
-    country: String
+    type: String,
+    trim: true
+  },
+  language: {
+    type: String,
+    required: true,
+    enum: ['en', 'si', 'ta'], // English, Sinhala, Tamil
+    default: 'en'
   },
   location: {
     type: {

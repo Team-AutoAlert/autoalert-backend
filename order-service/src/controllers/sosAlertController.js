@@ -15,6 +15,7 @@ class SOSAlertController {
         this.initializeCommunication = this.initializeCommunication.bind(this);
         this.getAllSOSAlerts = this.getAllSOSAlerts.bind(this);
         this.generateBill = this.generateBill.bind(this);
+        this.getActiveSOSAlertsForMech = this.getActiveSOSAlertsForMech.bind(this);
     }
 
     // Create a new SOS alert - driver
@@ -22,23 +23,23 @@ class SOSAlertController {
         try {
             const {
                 driverId,
-                vehicleId,
+                registrationNumber,
                 communicationMode,
-                breakdownDetails,
-                requiredExpertise
+                breakdownDetails
             } = req.body;
 
-            // Validate required expertise
-            if (!requiredExpertise || !Array.isArray(requiredExpertise) || requiredExpertise.length === 0) {
-                throw new ValidationError('Required expertise must be a non-empty array');
-            }
-
+            // Extract specializations from breakdown details
+            const requiredSpecializations = breakdownDetails
+                .toLowerCase()
+                .split(/\s+/)
+                .filter(word => word.length > 2); // Filter out short words
+            
             const sosAlert = await sosAlertService.createAlert({
                 driverId,
-                vehicleId,
+                registrationNumber,
                 communicationMode,
                 breakdownDetails,
-                requiredExpertise
+                requiredSpecializations // Add this field to the alert
             });
 
             let notificationStatus = {
@@ -52,7 +53,7 @@ class SOSAlertController {
             try {
                 const result = await this.notifyMatchingMechanics(sosAlert);
                 notificationStatus = {
-                    success: true,
+                    success: result.notifiedMechanics > 0,
                     message: result.availableMechanics > 0 
                         ? `Successfully notified ${result.notifiedMechanics} available mechanics with matching expertise`
                         : 'No available mechanics found with matching expertise',
@@ -70,7 +71,8 @@ class SOSAlertController {
             logger.info('Successfully created SOS alert', {
                 alertId: sosAlert._id,
                 driverId,
-                vehicleId,
+                registrationNumber,
+                requiredSpecializations,
                 notificationStatus
             });
 
@@ -95,12 +97,12 @@ class SOSAlertController {
             const alertsWithDetails = await Promise.all(activeAlerts.map(async (alert) => {
                 try {
                     // Get driver profile from user service
-                    const driverResponse = await axios.get(`${config.userServiceUrl}/users/${alert.driverId}/profile`);
+                    const driverResponse = await axios.get(`${config.userServiceUrl}/api/users/${alert.driverId}/profile`);
                     const driverProfile = driverResponse.data.data;
 
                     // Find the specific vehicle from driver's vehicles
-                    const vehicleDetails = driverProfile.driverDetails.vehicles.find(
-                        vehicle => vehicle._id === alert.vehicleId
+                    const vehicleDetails = driverProfile.driverDetails?.vehicles?.find(
+                        vehicle => vehicle.registrationNumber === alert.registrationNumber
                     );
 
                     return {
@@ -133,7 +135,8 @@ class SOSAlertController {
 
             res.json({
                 success: true,
-                data: alertsWithDetails
+                data: alertsWithDetails,
+                message: 'Successfully retrieved active alerts'
             });
         } catch (error) {
             next(error);
@@ -143,7 +146,7 @@ class SOSAlertController {
     // Accept SOS alert by mechanic - mechanic
     async acceptSOSAlert(req, res, next) {
         try {
-            const { alertId } = req.params;
+            const { alertId } = req.body;
             const { mechanicId } = req.body;
 
             if (!mechanicId) {
@@ -184,7 +187,7 @@ class SOSAlertController {
     // Complete SOS alert and generate bill
     async completeSOSAlert(req, res, next) {
         try {
-            const { alertId } = req.params;
+            const { alertId } = req.body;
             const { callDuration } = req.body;
 
             if (!callDuration || callDuration <= 0) {
@@ -226,7 +229,6 @@ class SOSAlertController {
         try {
             const response = await axios.post(`${config.paymentServiceUrl}/api/payments/bills`, {
                 alertId: sosAlert._id,
-                amount: sosAlert.charges,
                 driverId: sosAlert.driverId,
                 mechanicId: sosAlert.mechanicId,
                 callDuration: sosAlert.callDuration
@@ -242,8 +244,7 @@ class SOSAlertController {
         } catch (error) {
             logger.error('Error generating bill', {
                 error: error.message,
-                alertId: sosAlert._id,
-                amount: sosAlert.charges
+                alertId: sosAlert._id
             });
             throw new ServiceUnavailableError('Failed to generate bill');
         }
@@ -259,8 +260,15 @@ class SOSAlertController {
                 }
             });
 
-            const mechanics = response.data.users;
-            if (!mechanics || !Array.isArray(mechanics)) {
+            // Fix: Access mechanics from response.data.data instead of response.data.users
+            const mechanics = response.data.data?.filter(user => user.role === 'mechanic') || [];
+            
+            logger.info('Fetched mechanics from user service', {
+                totalMechanics: mechanics.length,
+                mechanics: mechanics
+            });
+
+            if (!mechanics || !Array.isArray(mechanics) || mechanics.length === 0) {
                 logger.warn('No mechanics found or invalid response format', {
                     alertId: sosAlert._id,
                     responseData: response.data
@@ -272,8 +280,17 @@ class SOSAlertController {
             const mechanicProfiles = await Promise.all(
                 mechanics.map(async (mechanic) => {
                     try {
-                        const profileResponse = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}/profile`);
-                        return profileResponse.data;
+                        const profileResponse = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}`);
+                        const mechanicProfile = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}/profile`);
+                        logger.info('Fetched mechanic profile', {
+                            mechanicId: mechanic.userId,
+                            profile: profileResponse.data,
+                            mechanicDetails: mechanicProfile.data
+                        });
+                        return {
+                            ...mechanicProfile.data,
+                            status: profileResponse.data.data.status
+                        };
                     } catch (error) {
                         logger.error('Error fetching mechanic profile', {
                             mechanicId: mechanic._id,
@@ -286,62 +303,106 @@ class SOSAlertController {
 
             // Filter out any failed profile fetches
             const validMechanicProfiles = mechanicProfiles.filter(profile => profile !== null);
-
-            const currentTime = new Date();
-            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-            const [currentHourStr, currentMinuteStr] = currentTime.toLocaleTimeString('en-US', { 
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit'
-            }).split(':');
-            const currentTimeInMinutes = parseInt(currentHourStr) * 60 + parseInt(currentMinuteStr);
-
-            logger.info('Checking mechanic availability', {
-                currentDay,
-                currentTime: `${currentHourStr}:${currentMinuteStr}`,
-                currentTimeInMinutes
+            logger.info('Valid mechanic profiles', {
+                totalValidProfiles: validMechanicProfiles.length,
+                profiles: validMechanicProfiles
             });
 
-            // Filter mechanics based on availability and expertise
+            // Filter mechanics based on status and expertise
             const availableMechanics = validMechanicProfiles.filter(mechanic => {
-                // Check if mechanic has required expertise
-                const hasRequiredExpertise = sosAlert.requiredExpertise.some(expertise => 
-                    mechanic.mechanicDetails?.specializations?.includes(expertise)
+                // Check if mechanic has at least one of the required specializations
+                const mechanicSpecializations = mechanic.mechanicDetails?.specializations || [];
+                logger.info('Checking mechanic specializations', {
+                    mechanicId: mechanic.userId,
+                    mechanicSpecializations,
+                    requiredSpecializations: sosAlert.requiredSpecializations
+                });
+
+                const hasMatchingSpecialization = mechanicSpecializations.some(spec => 
+                    sosAlert.requiredSpecializations.includes(spec.toLowerCase())
                 );
 
-                if (!hasRequiredExpertise) return false;
+                if (!hasMatchingSpecialization) {
+                    logger.debug('Mechanic does not have any matching specializations', {
+                        mechanicId: mechanic.userId,
+                        mechanicSpecializations,
+                        requiredSpecializations: sosAlert.requiredSpecializations
+                    });
+                    return false;
+                }
 
-                // Check if mechanic is currently working
-                const workingHours = mechanic.mechanicDetails?.workingHours?.[currentDay];
-                if (!workingHours) return false;
-
-                const [startHourStr, startMinuteStr] = workingHours.start.split(':');
-                const [endHourStr, endMinuteStr] = workingHours.end.split(':');
+                // Check if mechanic is active
+                const isActive = mechanic.status === 'active';
                 
-                const startTimeInMinutes = parseInt(startHourStr) * 60 + parseInt(startMinuteStr);
-                const endTimeInMinutes = parseInt(endHourStr) * 60 + parseInt(endMinuteStr);
+                logger.info('Mechanic status check', {
+                    mechanicId: mechanic.userId,
+                    status: mechanic.status,
+                    isActive
+                });
 
-                return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes;
+                if (!isActive) {
+                    logger.debug('Mechanic is not active', {
+                        mechanicId: mechanic.userId,
+                        status: mechanic.status
+                    });
+                }
+
+                return isActive;
+            });
+
+            logger.info('Available mechanics after filtering', {
+                totalAvailable: availableMechanics.length,
+                availableMechanics: availableMechanics.map(m => ({
+                    mechanicId: m.userId,
+                    specializations: m.mechanicDetails?.specializations,
+                    status: m.status
+                }))
+            });
+
+            // Update the SOS alert with matched mechanic IDs
+            const matchedMechanicIds = availableMechanics.map(mechanic => mechanic.userId);
+            await sosAlertService.updateAlert(sosAlert._id, { matchedMechanicIds });
+
+            logger.info('Updated SOS alert with matched mechanics', {
+                alertId: sosAlert._id,
+                matchedMechanicCount: matchedMechanicIds.length
             });
 
             if (availableMechanics.length === 0) {
                 logger.warn('No available mechanics found with matching expertise', {
                     alertId: sosAlert._id,
-                    requiredExpertise: sosAlert.requiredExpertise
+                    requiredSpecializations: sosAlert.requiredSpecializations
                 });
                 return { availableMechanics: 0, notifiedMechanics: 0 };
             }
 
             // Send notifications to available mechanics
             try {
-                await axios.post(`${config.notificationServiceUrl}/api/notifications/send/bulk`, {
-                    userIds: availableMechanics.map(m => m.userId),
-                    message: `New SOS Alert: ${sosAlert.breakdownDetails}. Required expertise: ${sosAlert.requiredExpertise.join(', ')}. Communication mode: ${sosAlert.communicationMode}`
-                });
+                // await axios.post(`${config.notificationServiceUrl}/api/notifications/send/bulk`, {
+                //     userIds: availableMechanics.map(m => m.userId),
+                //     title: 'New SOS Alert',
+                //     message: `New breakdown alert: ${sosAlert.breakdownDetails}`,
+                //     data: {
+                //         type: 'SOS_ALERT',
+                //         alertId: sosAlert._id,
+                //         breakdownDetails: sosAlert.breakdownDetails,
+                //     }
+                // });
+                const firstMechanic = availableMechanics[0];
+                    await axios.post(`${config.notificationServiceUrl}/api/notifications/send`, {
+                        userId: firstMechanic.userId,
+                        title: 'New SOS Alert',
+                        message: `New breakdown alert: ${sosAlert.breakdownDetails}`,
+                        data: {
+                            type: 'SOS_ALERT',
+                            alertId: sosAlert._id,
+                            breakdownDetails: sosAlert.breakdownDetails,
+                        }
+                    });
 
                 logger.info('Successfully notified matching mechanics', {
                     alertId: sosAlert._id,
-                    mechanicCount: availableMechanics.length
+                    mechanicCount: availableMechanics.length,
                 });
 
                 return {
@@ -362,7 +423,7 @@ class SOSAlertController {
                 error: error.message,
                 alertId: sosAlert._id
             });
-            throw error; // Propagate the error to be handled by the caller
+            throw error;
         }
     }
 
@@ -383,9 +444,22 @@ class SOSAlertController {
 
             // Initialize voice call
             const response = await axios.post(`${config.communicationServiceUrl}/api/communications/voice/calls`, {
-                to: mechanicPhone,
-                from: driverPhone,
-                userId: sosAlert.driverId
+                to: driverPhone,
+                from: mechanicPhone,
+                userId: sosAlert.driverId,
+                callType: 'traditional',
+                mediaType: sosAlert.communicationMode,
+                channelName: `sos-alert-${sosAlert._id}`,
+                participants: {
+                    driver: {
+                        id: sosAlert.driverId,
+                        phoneNumber: driverPhone
+                    },
+                    mechanic: {
+                        id: sosAlert.mechanicId,
+                        phoneNumber: mechanicPhone
+                    }
+                }
             });
 
             logger.info('Communication service response:', {
@@ -407,138 +481,6 @@ class SOSAlertController {
             throw new ServiceUnavailableError('Failed to initialize communication');
         }
     }
-
-    // // Get alerts for a specific mechanic based on availability and expertise
-    // async getMechanicAlerts(req, res, next) {
-    //     try {
-    //         const { mechanicId } = req.params;
-
-    //         // Get mechanic details from user service
-    //         let mechanicProfile;
-    //         try {
-    //             const userServiceUrl = `${config.userServiceUrl}/users/${mechanicId}/profile`;
-    //             logger.info('Fetching mechanic profile from:', { url: userServiceUrl });
-                
-    //             const mechanicResponse = await axios.get(userServiceUrl);
-    //             logger.info('User service response:', { 
-    //                 status: mechanicResponse.status,
-    //                 data: mechanicResponse.data 
-    //             });
-                
-    //             mechanicProfile = mechanicResponse.data.data;
-    //         } catch (error) {
-    //             logger.error('Error fetching mechanic profile', {
-    //                 error: error.message,
-    //                 mechanicId,
-    //                 statusCode: error.response?.status,
-    //                 responseData: error.response?.data,
-    //                 config: {
-    //                     url: error.config?.url,
-    //                     method: error.config?.method,
-    //                     headers: error.config?.headers
-    //                 }
-    //             });
-    //             throw new ServiceUnavailableError('Unable to fetch mechanic details. Please try again later.');
-    //         }
-
-    //         if (!mechanicProfile || mechanicProfile.role !== 'mechanic') {
-    //             throw new NotFoundError('Mechanic not found or invalid role');
-    //         }
-
-    //         // Get all active alerts
-    //         const activeAlerts = await sosAlertService.getActiveAlerts();
-
-    //         // Get current time for availability check
-    //         const currentTime = new Date();
-    //         const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'lowercase' });
-    //         const currentHour = currentTime.getHours();
-
-    //         // Check if mechanic is currently working
-    //         const workingHours = mechanicProfile.mechanicDetails?.workingHours?.[currentDay];
-    //         const isAvailable = workingHours && (() => {
-    //             const [startHour, endHour] = workingHours.split('-').map(h => parseInt(h));
-    //             return currentHour >= startHour && currentHour < endHour;
-    //         })();
-
-    //         if (!isAvailable) {
-    //             logger.info('Mechanic is not currently working', {
-    //                 mechanicId,
-    //                 currentDay,
-    //                 currentHour,
-    //                 workingHours: workingHours || 'Not set'
-    //             });
-    //             return res.json({
-    //                 success: true,
-    //                 data: [],
-    //                 message: 'No alerts available - mechanic is not currently working'
-    //             });
-    //         }
-
-    //         // Filter alerts based on mechanic's expertise
-    //         const matchingAlerts = await Promise.all(activeAlerts
-    //             .filter(alert => {
-    //                 // Check if mechanic has any of the required expertise
-    //                 return alert.requiredExpertise.some(expertise => 
-    //                     mechanicProfile.mechanicDetails?.specializations?.includes(expertise)
-    //                 );
-    //             })
-    //             .map(async (alert) => {
-    //                 try {
-    //                     // Get driver profile from user service
-    //                     const driverResponse = await axios.get(`${config.userServiceUrl}/users/${alert.driverId}/profile`);
-    //                     const driverProfile = driverResponse.data.data;
-
-    //                     // Find the specific vehicle from driver's vehicles
-    //                     const vehicleDetails = driverProfile.driverDetails?.vehicles?.find(
-    //                         vehicle => vehicle._id === alert.vehicleId
-    //                     );
-
-    //                     return {
-    //                         ...alert.toObject(),
-    //                         driver: {
-    //                             firstName: driverProfile.firstName,
-    //                             lastName: driverProfile.lastName,
-    //                             phoneNumber: driverProfile.phoneNumber,
-    //                             email: driverProfile.email
-    //                         },
-    //                         vehicle: vehicleDetails || null,
-    //                         matchingExpertise: alert.requiredExpertise.filter(expertise => 
-    //                             mechanicProfile.mechanicDetails?.specializations?.includes(expertise)
-    //                         )
-    //                     };
-    //                 } catch (error) {
-    //                     logger.error(`Error fetching details for alert ${alert._id}:`, {
-    //                         error: error.message,
-    //                         alertId: alert._id,
-    //                         driverId: alert.driverId
-    //                     });
-    //                     return {
-    //                         ...alert.toObject(),
-    //                         driver: null,
-    //                         vehicle: null,
-    //                         matchingExpertise: alert.requiredExpertise.filter(expertise => 
-    //                             mechanicProfile.mechanicDetails?.specializations?.includes(expertise)
-    //                         )
-    //                     };
-    //                 }
-    //             }));
-
-    //         logger.info('Successfully fetched alerts for mechanic', {
-    //             mechanicId,
-    //             alertCount: matchingAlerts.length
-    //         });
-
-    //         res.json({
-    //             success: true,
-    //             data: matchingAlerts,
-    //             message: matchingAlerts.length > 0 ? 
-    //                 'Found matching alerts for mechanic' : 
-    //                 'No matching alerts found for mechanic'
-    //         });
-    //     } catch (error) {
-    //         next(error);
-    //     }
-    // }
 
     // Get all SOS alerts regardless of status
     async getAllSOSAlerts(req, res, next) {
@@ -588,6 +530,64 @@ class SOSAlertController {
                     }
                 },
                 message: 'Successfully retrieved all alerts'
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getActiveSOSAlertsForMech(req, res, next) {
+        try {
+            const { mechanicId } = req.params;
+
+            // Get active alerts where this mechanic is in the matchedMechanicIds array
+            const activeAlerts = await sosAlertService.getActiveAlertsForMechanic(mechanicId);
+            
+            // Fetch driver and vehicle details for each alert
+            const alertsWithDetails = await Promise.all(activeAlerts.map(async (alert) => {
+                try {
+                    // Get driver profile from user service
+                    const driverResponse = await axios.get(`${config.userServiceUrl}/api/users/${alert.driverId}/profile`);
+                    const driverProfile = driverResponse.data.data;
+
+                    // Find the specific vehicle from driver's vehicles
+                    const vehicleDetails = driverProfile.driverDetails?.vehicles?.find(
+                        vehicle => vehicle.registrationNumber === alert.registrationNumber
+                    );
+
+                    return {
+                        ...alert.toObject(),
+                        driver: {
+                            firstName: driverProfile.firstName,
+                            lastName: driverProfile.lastName,
+                            phoneNumber: driverProfile.phoneNumber,
+                            email: driverProfile.email
+                        },
+                        vehicle: vehicleDetails || null
+                    };
+                } catch (error) {
+                    logger.error(`Error fetching details for alert ${alert._id}:`, {
+                        error: error.message,
+                        alertId: alert._id,
+                        driverId: alert.driverId
+                    });
+                    return {
+                        ...alert.toObject(),
+                        driver: null,
+                        vehicle: null
+                    };
+                }
+            }));
+
+            logger.info('Successfully fetched active alerts for mechanic', {
+                mechanicId,
+                count: alertsWithDetails.length
+            });
+
+            res.json({
+                success: true,
+                data: alertsWithDetails,
+                message: 'Successfully retrieved active alerts for mechanic'
             });
         } catch (error) {
             next(error);
