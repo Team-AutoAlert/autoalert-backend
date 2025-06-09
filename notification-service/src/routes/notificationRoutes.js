@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const { sendSMS } = require('../utils/smsService');
 const { sendEmail } = require('../utils/emailService');
 const mongoose = require('mongoose');
+const admin = require('../config/firebase');
 
 // Device registration
 router.post('/devices', notificationController.registerDevice);
@@ -13,6 +14,47 @@ router.post('/devices', notificationController.registerDevice);
 // Send notifications
 router.post('/send', notificationController.sendNotification);
 router.post('/send/bulk', notificationController.sendBulkNotification);
+
+// Test Firebase setup
+router.post('/test-firebase', async (req, res) => {
+    try {
+        const { token } = req.body;
+        
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                error: 'FCM token is required'
+            });
+        }
+
+        // Send a test message
+        const message = {
+            notification: {
+                title: 'Test Notification',
+                body: 'This is a test notification from Auto Alert'
+            },
+            data: {
+                type: 'test',
+                timestamp: new Date().toISOString()
+            },
+            token: token
+        };
+
+        const result = await admin.messaging().send(message);
+        
+        res.json({
+            success: true,
+            messageId: result,
+            message: 'Test notification sent successfully'
+        });
+    } catch (error) {
+        logger.error('Test notification error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
 
 // Verification routes
 router.post('/send-verification', async (req, res) => {
