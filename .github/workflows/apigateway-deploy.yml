@@ -4,7 +4,6 @@ on:
   push:
     branches: 
       - main
-      - feature/AA-049-tutorial-service-deployment
     paths:
       - 'api-gateway/**'
       - '.github/workflows/apigateway-deploy.yml'
