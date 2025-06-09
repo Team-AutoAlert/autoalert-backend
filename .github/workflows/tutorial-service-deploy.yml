@@ -4,7 +4,6 @@ on:
   push:
     branches: 
       - main
-      - feature/AA-049-tutorial-service-deployment
     paths:
       - 'tutorial-service/**'
       - '.github/workflows/tutorial-service-deploy.yml'
