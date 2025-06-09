@@ -8,8 +8,13 @@ const deviceSchema = new mongoose.Schema({
     },
     phoneNumber: {
         type: String,
-        required: true,
-        unique: true
+        required: false,
+        sparse: true
+    },
+    fcmToken: {
+        type: String,
+        required: false,
+        sparse: true
     },
     createdAt: {
         type: Date,

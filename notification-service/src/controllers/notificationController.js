@@ -1,4 +1,5 @@
 const notificationService = require('../services/notificationService');
+const pushNotificationService = require('../services/pushNotificationService');
 const { validateDevice, validateNotification, validateBulkNotification } = require('../utils/validation');
 const logger = require('../utils/logger');
 const nodemailer = require('nodemailer');
@@ -49,10 +50,10 @@ class NotificationController {
                 return res.status(400).json({ error: error.details[0].message });
             }
 
-            const { userId, phoneNumber } = req.body;
+            const { userId, phoneNumber, fcmToken } = req.body;
             
             try {
-                const device = await notificationService.registerDevice(userId, phoneNumber);
+                const device = await notificationService.registerDevice(userId, phoneNumber, fcmToken);
                 res.status(201).json(device);
             } catch (dbError) {
                 logger.error('Database operation failed:', dbError);
@@ -85,8 +86,8 @@ class NotificationController {
                 return res.status(400).json({ error: error.details[0].message });
             }
 
-            const { userId, message } = req.body;
-            const result = await notificationService.sendSMS(userId, message);
+            const { userId, message, data } = req.body;
+            const result = await pushNotificationService.sendPushNotification(userId, message, data);
             res.json(result);
         } catch (error) {
             logger.error('Error in sendNotification:', error);
@@ -101,8 +102,8 @@ class NotificationController {
                 return res.status(400).json({ error: error.details[0].message });
             }
 
-            const { userIds, message } = req.body;
-            const result = await notificationService.sendBulkSMS(userIds, message);
+            const { userIds, message, data } = req.body;
+            const result = await pushNotificationService.sendBulkPushNotification(userIds, message, data);
             res.json(result);
         } catch (error) {
             logger.error('Error in sendBulkNotification:', error);
