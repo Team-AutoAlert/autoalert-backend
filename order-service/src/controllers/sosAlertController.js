@@ -280,12 +280,17 @@ class SOSAlertController {
             const mechanicProfiles = await Promise.all(
                 mechanics.map(async (mechanic) => {
                     try {
-                        const profileResponse = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}/profile`);
+                        const profileResponse = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}`);
+                        const mechanicProfile = await axios.get(`${config.userServiceUrl}/api/users/${mechanic.userId}/profile`);
                         logger.info('Fetched mechanic profile', {
                             mechanicId: mechanic.userId,
-                            profile: profileResponse.data
+                            profile: profileResponse.data,
+                            mechanicDetails: mechanicProfile.data
                         });
-                        return profileResponse.data;
+                        return {
+                            ...mechanicProfile.data,
+                            status: profileResponse.data.data.status
+                        };
                     } catch (error) {
                         logger.error('Error fetching mechanic profile', {
                             mechanicId: mechanic._id,
@@ -303,23 +308,7 @@ class SOSAlertController {
                 profiles: validMechanicProfiles
             });
 
-            const currentTime = new Date();
-            const currentDay = currentTime.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-            const [currentHourStr, currentMinuteStr] = currentTime.toLocaleTimeString('en-US', { 
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit'
-            }).split(':');
-            const currentTimeInMinutes = parseInt(currentHourStr) * 60 + parseInt(currentMinuteStr);
-
-            logger.info('Current time details', {
-                currentDay,
-                currentTime: `${currentHourStr}:${currentMinuteStr}`,
-                currentTimeInMinutes,
-                requiredSpecializations: sosAlert.requiredSpecializations
-            });
-
-            // Filter mechanics based on availability and expertise
+            // Filter mechanics based on status and expertise
             const availableMechanics = validMechanicProfiles.filter(mechanic => {
                 // Check if mechanic has at least one of the required specializations
                 const mechanicSpecializations = mechanic.mechanicDetails?.specializations || [];
@@ -342,47 +331,23 @@ class SOSAlertController {
                     return false;
                 }
 
-                // Check if mechanic is currently working
-                const workingHours = mechanic.mechanicDetails?.workingHours?.[currentDay];
-                logger.info('Checking mechanic working hours', {
+                // Check if mechanic is active
+                const isActive = mechanic.status === 'active';
+                
+                logger.info('Mechanic status check', {
                     mechanicId: mechanic.userId,
-                    currentDay,
-                    workingHours
+                    status: mechanic.status,
+                    isActive
                 });
 
-                if (!workingHours) {
-                    logger.debug('Mechanic is not working today', {
+                if (!isActive) {
+                    logger.debug('Mechanic is not active', {
                         mechanicId: mechanic.userId,
-                        currentDay
-                    });
-                    return false;
-                }
-
-                const [startHourStr, startMinuteStr] = workingHours.start.split(':');
-                const [endHourStr, endMinuteStr] = workingHours.end.split(':');
-                
-                const startTimeInMinutes = parseInt(startHourStr) * 60 + parseInt(startMinuteStr);
-                const endTimeInMinutes = parseInt(endHourStr) * 60 + parseInt(endMinuteStr);
-
-                const isWorking = currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes < endTimeInMinutes;
-                
-                logger.info('Mechanic working time check', {
-                    mechanicId: mechanic.userId,
-                    currentTimeInMinutes,
-                    startTimeInMinutes,
-                    endTimeInMinutes,
-                    isWorking
-                });
-
-                if (!isWorking) {
-                    logger.debug('Mechanic is not working at current time', {
-                        mechanicId: mechanic.userId,
-                        currentTime: `${currentHourStr}:${currentMinuteStr}`,
-                        workingHours: `${workingHours.start}-${workingHours.end}`
+                        status: mechanic.status
                     });
                 }
 
-                return isWorking;
+                return isActive;
             });
 
             logger.info('Available mechanics after filtering', {
@@ -390,7 +355,7 @@ class SOSAlertController {
                 availableMechanics: availableMechanics.map(m => ({
                     mechanicId: m.userId,
                     specializations: m.mechanicDetails?.specializations,
-                    workingHours: m.mechanicDetails?.workingHours?.[currentDay]
+                    status: m.status
                 }))
             });
 
@@ -413,16 +378,27 @@ class SOSAlertController {
 
             // Send notifications to available mechanics
             try {
-                await axios.post(`${config.notificationServiceUrl}/api/notifications/send/bulk`, {
-                    userIds: availableMechanics.map(m => m.userId),
-                    title: 'New SOS Alert',
-                    message: `New breakdown alert: ${sosAlert.breakdownDetails}`,
-                    data: {
-                        type: 'SOS_ALERT',
-                        alertId: sosAlert._id,
-                        breakdownDetails: sosAlert.breakdownDetails,
-                    }
-                });
+                // await axios.post(`${config.notificationServiceUrl}/api/notifications/send/bulk`, {
+                //     userIds: availableMechanics.map(m => m.userId),
+                //     title: 'New SOS Alert',
+                //     message: `New breakdown alert: ${sosAlert.breakdownDetails}`,
+                //     data: {
+                //         type: 'SOS_ALERT',
+                //         alertId: sosAlert._id,
+                //         breakdownDetails: sosAlert.breakdownDetails,
+                //     }
+                // });
+                const firstMechanic = availableMechanics[0];
+                    await axios.post(`${config.notificationServiceUrl}/api/notifications/send`, {
+                        userId: firstMechanic.userId,
+                        title: 'New SOS Alert',
+                        message: `New breakdown alert: ${sosAlert.breakdownDetails}`,
+                        data: {
+                            type: 'SOS_ALERT',
+                            alertId: sosAlert._id,
+                            breakdownDetails: sosAlert.breakdownDetails,
+                        }
+                    });
 
                 logger.info('Successfully notified matching mechanics', {
                     alertId: sosAlert._id,
@@ -471,7 +447,7 @@ class SOSAlertController {
                 to: driverPhone,
                 from: mechanicPhone,
                 userId: sosAlert.driverId,
-                callType: 'agora',
+                callType: 'traditional',
                 mediaType: sosAlert.communicationMode,
                 channelName: `sos-alert-${sosAlert._id}`,
                 participants: {
