@@ -6,13 +6,13 @@ on:
       - main
       - feature/AA-049-tutorial-service-deployment
     paths:
-      - 'apigateway/**'
+      - 'api-gateway/**'
       - '.github/workflows/apigateway-deploy.yml'
   workflow_dispatch:
 
 env:
   AZURE_WEBAPP_NAME: autoalert-apigateway
-  AZURE_WEBAPP_PACKAGE_PATH: apigateway
+  AZURE_WEBAPP_PACKAGE_PATH: api-gateway
   NODE_VERSION: '20.x'
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         node-version: ${{ env.NODE_VERSION }}
         
     - name: Install dependencies
-      working-directory: ./apigateway
+      working-directory: ./api-gateway
       run: |
         echo "Installing dependencies..."
         npm install --production
@@ -37,7 +37,7 @@ jobs:
     - name: Prepare for deployment
       run: |
         echo "Creating deployment package..."
-        cd apigateway
+        cd api-gateway
         zip -r ../release.zip ./*
         echo "Deployment package created successfully"
 
