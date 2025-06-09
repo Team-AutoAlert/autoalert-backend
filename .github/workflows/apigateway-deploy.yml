@@ -1,0 +1,48 @@
+name: Deploy API Gateway Service
+
+on:
+  push:
+    branches: 
+      - main
+    paths:
+      - 'api-gateway/**'
+      - '.github/workflows/apigateway-deploy.yml'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: autoalert-api-gateway
+  AZURE_WEBAPP_PACKAGE_PATH: api-gateway
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        
+    - name: Install dependencies
+      working-directory: ./api-gateway
+      run: |
+        echo "Installing dependencies..."
+        npm install --production
+        echo "Dependencies installed successfully"
+      
+    - name: Prepare for deployment
+      run: |
+        echo "Creating deployment package..."
+        cd api-gateway
+        zip -r ../release.zip ./*
+        echo "Deployment package created successfully"
+
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        publish-profile: ${{ secrets.APIGATEWAY_PUBLISH_PROFILE }}
+        package: release.zip 
