@@ -26,7 +26,7 @@ class NotificationService {
         }
     }
 
-    async registerDevice(userId, phoneNumber) {
+    async registerDevice(userId, phoneNumber, fcmToken) {
         try {
             // Check MongoDB connection
             if (mongoose.connection.readyState !== 1) {
@@ -34,19 +34,40 @@ class NotificationService {
                 throw new Error('Database connection is not available');
             }
 
-            // Validate phone number format (E.164 format)
-            if (!phoneNumber.startsWith('+')) {
+            // Format phone number if provided
+            if (phoneNumber && !phoneNumber.startsWith('+')) {
                 phoneNumber = '+' + phoneNumber;
             }
 
-            // Create a new device document
-            const device = new Device({
-                userId,
-                phoneNumber,
-                lastUsed: new Date()
-            });
+            // Create or update device document
+            let device;
+            if (fcmToken) {
+                // Try to find existing device with this FCM token
+                device = await Device.findOne({ fcmToken });
+            }
 
-            // Save the device - this will create the database and collection if they don't exist
+            if (!device && phoneNumber) {
+                // Try to find existing device with this phone number
+                device = await Device.findOne({ phoneNumber });
+            }
+
+            if (!device) {
+                // Create new device if none exists
+                device = new Device({
+                    userId,
+                    phoneNumber,
+                    fcmToken,
+                    lastUsed: new Date()
+                });
+            } else {
+                // Update existing device
+                device.userId = userId;
+                device.phoneNumber = phoneNumber;
+                device.fcmToken = fcmToken;
+                device.lastUsed = new Date();
+            }
+
+            // Save the device
             const savedDevice = await device.save();
             
             logger.info(`Device registered successfully for user: ${userId}`, {
@@ -64,6 +85,28 @@ class NotificationService {
                 phoneNumber
             });
             throw error;
+        }
+    }
+
+    // Keep the SMS sending functionality for verifications
+    async sendVerificationSMS(phoneNumber, message) {
+        try {
+            const result = await this.twilioClient.messages.create({
+                body: message,
+                from: process.env.TWILIO_PHONE_NUMBER,
+                to: phoneNumber
+            });
+
+            return {
+                success: true,
+                messageId: result.sid
+            };
+        } catch (error) {
+            logger.error(`SMS sending failed for ${phoneNumber}:`, error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 
