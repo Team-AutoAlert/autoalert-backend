@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: autoalert-apigateway
+  AZURE_WEBAPP_NAME: autoalert-api-gateway
   AZURE_WEBAPP_PACKAGE_PATH: api-gateway
   NODE_VERSION: '20.x'
 
