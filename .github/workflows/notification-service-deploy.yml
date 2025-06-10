@@ -4,7 +4,6 @@ on:
   push:
     branches: 
       - main
-      - Auth-service-fix
     paths:
       - 'notification-service/**'
       - '.github/workflows/notification-service-deploy.yml'
