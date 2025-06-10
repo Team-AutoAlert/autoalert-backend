@@ -9,13 +9,8 @@ const userSchema = Joi.object({
   phoneNumber: Joi.string().required(),
   profilePicture: Joi.string().allow(null),
   status: Joi.string().valid('active', 'inactive', 'suspended'),
-  address: Joi.object({
-    street: Joi.string(),
-    city: Joi.string(),
-    state: Joi.string(),
-    postalCode: Joi.string(),
-    country: Joi.string()
-  }),
+  address: Joi.string().required(),
+  language: Joi.string().valid('en', 'si', 'ta').default('en'),
   location: Joi.object({
     type: Joi.string().valid('Point'),
     coordinates: Joi.array().items(Joi.number()).length(2)
@@ -23,7 +18,6 @@ const userSchema = Joi.object({
 });
 
 const vehicleSchema = Joi.object({
-  vehicleId: Joi.string().required(),
   brand: Joi.string().required(),
   model: Joi.string().required(),
   fuelType: Joi.string().valid('Petrol', 'Diesel', 'Electric', 'Hybrid').required(),

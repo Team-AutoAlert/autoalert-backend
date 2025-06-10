@@ -1,21 +1,65 @@
 const User = require('../models/User');
 const UserProfile = require('../models/UserProfile');
 const { UserNotFoundError, ValidationError } = require('../utils/errors');
+const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 class UserService {
   async createUser(userData) {
-    const user = new User(userData);
-    await user.save();
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    const userProfile = new UserProfile({
-      userId: user.userId,
-      role: user.role,
-      phoneNumber: user.phoneNumber,
-      ...(user.role === 'driver' ? { driverDetails: {} } : { mechanicDetails: {} })
-    });
-    await userProfile.save();
+    try {
+      // Check if user already exists
+      const existingUser = await User.findOne({ 
+        $or: [
+          { userId: userData.userId },
+          { email: userData.email }
+        ]
+      }).session(session);
 
-    return { user, profile: userProfile };
+      if (existingUser) {
+        throw new ValidationError('User with this ID or email already exists');
+      }
+
+      // Create user
+      const user = new User(userData);
+      await user.save({ session });
+
+      // Create user profile
+      const userProfile = new UserProfile({
+        userId: user.userId,
+        role: user.role,
+        phoneNumber: user.phoneNumber,
+        language: user.language || 'en',
+        ...(user.role === 'driver' ? { 
+          driverDetails: {
+            vehicles: [],
+            vehicleCount: 0
+          } 
+        } : { 
+          mechanicDetails: {
+            specializations: [],
+            workingHours: {}
+          } 
+        })
+      });
+
+      await userProfile.save({ session });
+      await session.commitTransaction();
+
+      return { user, profile: userProfile };
+    } catch (error) {
+      await session.abortTransaction();
+      logger.error('Create user error:', {
+        error: error.message,
+        stack: error.stack,
+        userData: { ...userData, password: undefined }
+      });
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
 
   async getUserById(userId) {
