@@ -4,32 +4,50 @@ const User = require('../models/User');
 const UserProfile = require('../models/UserProfile');
 const logger = require('../utils/logger');
 const userController = require('../controllers/userController');
+const userService = require('../services/userService');
+const { validateUser } = require('../middleware/validation');
 
 // Create user
 router.post('/', async (req, res) => {
     try {
-        // Create the user first
-        const user = await User.create(req.body);
+        // Validate user data
+        await validateUser(req.body);
         
-        // Create the user profile
-        const userProfile = new UserProfile({
-            userId: user.userId,
-            role: user.role,
-            phoneNumber: user.phoneNumber,
-            language: user.language || 'en',
-            ...(user.role === 'driver' ? { driverDetails: {} } : { mechanicDetails: {} })
-        });
-        await userProfile.save();
+        // Create user using service
+        const result = await userService.createUser(req.body);
 
         res.status(201).json({
             success: true,
-            data: { user, profile: userProfile }
+            data: result
         });
     } catch (error) {
-        logger.error('Create user error:', error);
-        res.status(400).json({
+        logger.error('Create user error:', {
+            error: error.message,
+            stack: error.stack,
+            body: { ...req.body, password: undefined }
+        });
+
+        // Handle specific error types
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                success: false,
+                error: 'Validation error',
+                details: error.message
+            });
+        }
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                error: 'Duplicate key error',
+                details: 'A user with this ID, email, or phone number already exists'
+            });
+        }
+
+        res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Internal server error',
+            details: error.message
         });
     }
 });
