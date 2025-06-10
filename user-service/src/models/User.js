@@ -40,10 +40,11 @@ const userSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['active', 'inactive', 'suspended'],
-    default: 'active'
+    default: 'inactive'
   },
   address: {
     type: String,
+    required: true,
     trim: true
   },
   language: {

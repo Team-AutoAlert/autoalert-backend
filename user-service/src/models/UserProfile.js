@@ -55,8 +55,7 @@ const userProfileSchema = new mongoose.Schema({
       },
       registrationNumber: {
         type: String,
-        required: true,
-        unique: true
+        required: true
       },
       lastServiceDate: Date,
       nextServiceDue: Date
@@ -98,5 +97,8 @@ const userProfileSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Create compound index for userId and vehicle registration number
+userProfileSchema.index({ 'driverDetails.vehicles.registrationNumber': 1, userId: 1 }, { unique: true });
 
 module.exports = mongoose.model('UserProfile', userProfileSchema);
