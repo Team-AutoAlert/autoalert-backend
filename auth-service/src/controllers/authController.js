@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const axios = require('axios');
 const { userServiceUrl } = require('../config/config');
 const { AuthError } = require('../utils/errors');
+const notificationService = require('../services/notificationService');
 
 const register = async (req, res) => {
     let firebaseUser = null;
@@ -62,6 +63,15 @@ const register = async (req, res) => {
         );
 
         logger.info(`User profile created successfully in user service: ${userId}`);
+
+        // Register device with notification service
+        try {
+            await notificationService.registerDevice(userId, phoneNumber);
+            logger.info(`Device registered with notification service for user: ${userId}`);
+        } catch (deviceError) {
+            logger.error(`Failed to register device: ${deviceError.message}`);
+            // Continue with registration even if device registration fails
+        }
 
         // Generate verification link
         const emailVerificationLink = await admin.auth().generateEmailVerificationLink(email);

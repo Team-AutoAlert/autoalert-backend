@@ -6,6 +6,20 @@ class NotificationService {
         this.baseURL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3005';
     }
 
+    async registerDevice(userId, phoneNumber) {
+        try {
+            const response = await axios.post(`${this.baseURL}/api/notifications/devices`, {
+                userId,
+                phoneNumber
+            });
+            logger.info(`Device registered successfully for user: ${userId}`);
+            return response.data;
+        } catch (error) {
+            logger.error('Failed to register device:', error);
+            throw new Error('Device registration failed');
+        }
+    }
+
     async sendSMS(phoneNumber, message) {
         try {
             const response = await axios.post(`${this.baseURL}/api/notifications/send`, {
