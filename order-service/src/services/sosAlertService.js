@@ -167,6 +167,25 @@ class SOSAlertService {
             throw error;
         }
     }
+
+    
+    // Get alert by ID
+    async getAlertById(alertId) {
+        try {
+            const alert = await SOSAlert.findById(alertId);
+            if (!alert) {
+                logger.warn('SOS alert not found', { alertId });
+                return null;
+            }
+            return alert;
+        } catch (error) {
+            logger.error('Error getting SOS alert by ID:', {
+                error: error.message,
+                alertId
+            });
+            throw error;
+        }
+    }
 }
 
 module.exports = new SOSAlertService(); 
