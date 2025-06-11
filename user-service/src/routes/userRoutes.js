@@ -697,4 +697,52 @@ router.get('/profiles/all', async (req, res) => {
     }
 });
 
+// Update user status (active/inactive)
+router.patch('/:userId/status', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { status } = req.body;
+
+        // Validate status
+        if (!status || !['active', 'inactive'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid status. Status must be either "active" or "inactive"'
+            });
+        }
+
+        // Update user status
+        const user = await User.findOneAndUpdate(
+            { userId },
+            { $set: { status } },
+            { new: true, runValidators: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
+        // Log status change
+        logger.info(`User ${userId} status updated to ${status}`);
+
+        res.json({
+            success: true,
+            data: {
+                userId: user.userId,
+                status: user.status,
+                updatedAt: user.updatedAt
+            }
+        });
+    } catch (error) {
+        logger.error('Update user status error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update user status'
+        });
+    }
+});
+
 module.exports = router; 
