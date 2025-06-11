@@ -14,6 +14,9 @@ router.get('/active', sosAlertController.getActiveSOSAlerts);
 // Get active SOS alerts for a mechanic with the matching specialization
 router.get('/:mechanicId/active', sosAlertController.getActiveSOSAlertsForMech);
 
+// Get specific request status and mechanic details
+router.get('/status/:alertId', sosAlertController.getSOSAlertStatus);
+
 // Accept SOS alert
 router.post('/accept', sosAlertController.acceptSOSAlert);
 

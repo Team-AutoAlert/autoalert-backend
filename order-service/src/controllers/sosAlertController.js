@@ -16,6 +16,7 @@ class SOSAlertController {
         this.getAllSOSAlerts = this.getAllSOSAlerts.bind(this);
         this.generateBill = this.generateBill.bind(this);
         this.getActiveSOSAlertsForMech = this.getActiveSOSAlertsForMech.bind(this);
+        this.getSOSAlertStatus = this.getSOSAlertStatus.bind(this);
     }
 
     // Create a new SOS alert - driver
@@ -532,6 +533,33 @@ class SOSAlertController {
                 message: 'Successfully retrieved all alerts'
             });
         } catch (error) {
+            next(error);
+        }
+    }
+
+    async getSOSAlertStatus(req, res, next) {
+        try {
+            const { alertId } = req.params;
+
+            // Get the SOS alert
+            const alert = await sosAlertService.getAlertById(alertId);
+            
+            if (!alert) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'SOS alert not found'
+                });
+            }
+
+            
+            res.json({
+                success: true,
+                data: {
+                    status: alert.status,
+                }
+            });
+        } catch (error) {
+            logger.error('Error getting SOS alert status:', error);
             next(error);
         }
     }
