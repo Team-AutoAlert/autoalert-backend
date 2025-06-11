@@ -6,6 +6,9 @@ const logger = require('../utils/logger');
 const userController = require('../controllers/userController');
 const userService = require('../services/userService');
 const { validateUser } = require('../middleware/validation');
+const { handleUploadErrors } = require('../middleware/fileUpload');
+const s3Service = require('../services/s3Service');
+const path = require('path');
 
 // Create user
 router.post('/', async (req, res) => {
@@ -447,6 +450,196 @@ router.delete('/:userId/vehicles/:registrationNumber', async (req, res) => {
         res.status(400).json({
             success: false,
             error: error.message
+        });
+    }
+});
+
+// Upload mechanic documents
+router.post('/:userId/mechanic/documents', handleUploadErrors, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Check if user exists and is a mechanic
+        const userProfile = await UserProfile.findOne({ userId });
+        if (!userProfile) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found'
+            });
+        }
+
+        if (userProfile.role !== 'mechanic') {
+            return res.status(400).json({
+                success: false,
+                error: 'Only mechanics can upload these documents'
+            });
+        }
+
+        const timestamp = Date.now();
+        const updates = {};
+
+        // Handle NIC document upload
+        if (req.files.nicDocument) {
+            const nicFile = req.files.nicDocument[0];
+            const nicKey = `mechanics/${userId}/nic-${timestamp}${path.extname(nicFile.originalname)}`;
+            
+            const nicResult = await s3Service.uploadFile(
+                nicFile.buffer,
+                nicKey,
+                nicFile.mimetype
+            );
+
+            // Delete old NIC document if exists
+            if (userProfile.mechanicDetails.nicDocument?.s3Key) {
+                await s3Service.deleteFile(userProfile.mechanicDetails.nicDocument.s3Key);
+            }
+
+            updates['mechanicDetails.nicDocument'] = {
+                url: nicResult.url,
+                s3Key: nicResult.key,
+                uploadedAt: new Date()
+            };
+        }
+
+        // Handle certificate upload
+        if (req.files.certificate) {
+            const certFile = req.files.certificate[0];
+            const certKey = `mechanics/${userId}/cert-${timestamp}${path.extname(certFile.originalname)}`;
+            
+            const certResult = await s3Service.uploadFile(
+                certFile.buffer,
+                certKey,
+                certFile.mimetype
+            );
+
+            // Delete old certificate if exists
+            if (userProfile.mechanicDetails.certificate?.s3Key) {
+                await s3Service.deleteFile(userProfile.mechanicDetails.certificate.s3Key);
+            }
+
+            updates['mechanicDetails.certificate'] = {
+                url: certResult.url,
+                s3Key: certResult.key,
+                uploadedAt: new Date()
+            };
+        }
+
+        // Update user profile
+        const updatedProfile = await UserProfile.findOneAndUpdate(
+            { userId },
+            { $set: updates },
+            { new: true }
+        );
+
+        res.json({
+            success: true,
+            data: {
+                nicDocument: updatedProfile.mechanicDetails.nicDocument,
+                certificate: updatedProfile.mechanicDetails.certificate,
+                isVerified: updatedProfile.mechanicDetails.isVerified
+            }
+        });
+    } catch (error) {
+        logger.error('Upload mechanic documents error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to upload documents'
+        });
+    }
+});
+
+// Update mechanic verification status (admin only)
+router.patch('/:userId/mechanic/verify', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { isVerified } = req.body;
+
+        // TODO: Add admin authentication middleware
+        
+        const userProfile = await UserProfile.findOne({ userId });
+        if (!userProfile) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found'
+            });
+        }
+
+        if (userProfile.role !== 'mechanic') {
+            return res.status(400).json({
+                success: false,
+                error: 'User is not a mechanic'
+            });
+        }
+
+        userProfile.mechanicDetails.isVerified = isVerified;
+        await userProfile.save();
+
+        res.json({
+            success: true,
+            data: {
+                isVerified: userProfile.mechanicDetails.isVerified
+            }
+        });
+    } catch (error) {
+        logger.error('Update mechanic verification error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update verification status'
+        });
+    }
+});
+
+// Get mechanic documents
+router.get('/:userId/mechanic/documents', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const userProfile = await UserProfile.findOne({ userId });
+        if (!userProfile) {
+            return res.status(404).json({
+                success: false,
+                error: 'User profile not found'
+            });
+        }
+
+        if (userProfile.role !== 'mechanic') {
+            return res.status(400).json({
+                success: false,
+                error: 'User is not a mechanic'
+            });
+        }
+
+        // Generate temporary URLs for the documents
+        let nicUrl = null;
+        let certUrl = null;
+
+        if (userProfile.mechanicDetails.nicDocument?.s3Key) {
+            nicUrl = s3Service.generateTemporaryUrl(userProfile.mechanicDetails.nicDocument.s3Key);
+        }
+
+        if (userProfile.mechanicDetails.certificate?.s3Key) {
+            certUrl = s3Service.generateTemporaryUrl(userProfile.mechanicDetails.certificate.s3Key);
+        }
+
+        res.json({
+            success: true,
+            data: {
+                nicDocument: nicUrl ? {
+                    url: nicUrl,
+                    uploadedAt: userProfile.mechanicDetails.nicDocument.uploadedAt
+                } : null,
+                certificate: certUrl ? {
+                    url: certUrl,
+                    uploadedAt: userProfile.mechanicDetails.certificate.uploadedAt
+                } : null,
+                isVerified: userProfile.mechanicDetails.isVerified
+            }
+        });
+    } catch (error) {
+        logger.error('Get mechanic documents error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get documents'
         });
     }
 });
