@@ -80,6 +80,21 @@ const userProfileSchema = new mongoose.Schema({
       friday: { start: String, end: String },
       saturday: { start: String, end: String },
       sunday: { start: String, end: String }
+    },
+    // Added fields for mechanic verification
+    nicDocument: {
+      url: String,
+      s3Key: String,
+      uploadedAt: Date
+    },
+    certificate: {
+      url: String,
+      s3Key: String,
+      uploadedAt: Date
+    },
+    isVerified: {
+      type: Boolean,
+      default: false
     }
   },
   ratings: {
