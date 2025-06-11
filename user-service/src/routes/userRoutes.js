@@ -609,27 +609,15 @@ router.get('/:userId/mechanic/documents', async (req, res) => {
             });
         }
 
-        // Generate temporary URLs for the documents
-        let nicUrl = null;
-        let certUrl = null;
-
-        if (userProfile.mechanicDetails.nicDocument?.s3Key) {
-            nicUrl = s3Service.generateTemporaryUrl(userProfile.mechanicDetails.nicDocument.s3Key);
-        }
-
-        if (userProfile.mechanicDetails.certificate?.s3Key) {
-            certUrl = s3Service.generateTemporaryUrl(userProfile.mechanicDetails.certificate.s3Key);
-        }
-
         res.json({
             success: true,
             data: {
-                nicDocument: nicUrl ? {
-                    url: nicUrl,
+                nicDocument: userProfile.mechanicDetails.nicDocument ? {
+                    url: userProfile.mechanicDetails.nicDocument.url,
                     uploadedAt: userProfile.mechanicDetails.nicDocument.uploadedAt
                 } : null,
-                certificate: certUrl ? {
-                    url: certUrl,
+                certificate: userProfile.mechanicDetails.certificate ? {
+                    url: userProfile.mechanicDetails.certificate.url,
                     uploadedAt: userProfile.mechanicDetails.certificate.uploadedAt
                 } : null,
                 isVerified: userProfile.mechanicDetails.isVerified
@@ -640,6 +628,71 @@ router.get('/:userId/mechanic/documents', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to get documents'
+        });
+    }
+});
+
+// Get all user profiles with pagination and filters
+router.get('/profiles/all', async (req, res) => {
+    try {
+        const {
+            page = 1,
+            limit = 10,
+            role,
+            isVerified,
+            search
+        } = req.query;
+
+        // Build query
+        const query = {};
+
+        // Add role filter if provided
+        if (role) {
+            query.role = role;
+        }
+
+        // Add verification status filter if provided
+        if (isVerified !== undefined) {
+            query['mechanicDetails.isVerified'] = isVerified === 'true';
+        }
+
+        // Add search filter if provided
+        if (search) {
+            query.$or = [
+                { userId: { $regex: search, $options: 'i' } },
+                { phoneNumber: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        // Calculate skip value for pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Get total count for pagination
+        const total = await UserProfile.countDocuments(query);
+
+        // Get user profiles
+        const userProfiles = await UserProfile.find(query)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .sort({ createdAt: -1 }); // Sort by newest first
+
+        res.json({
+            success: true,
+            data: {
+                profiles: userProfiles,
+                pagination: {
+                    total,
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    pages: Math.ceil(total / parseInt(limit))
+                }
+            }
+        });
+    } catch (error) {
+        logger.error('Get all user profiles error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get user profiles'
         });
     }
 });

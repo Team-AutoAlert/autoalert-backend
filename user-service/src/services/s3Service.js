@@ -25,7 +25,8 @@ class S3Service {
         Bucket: bucket,
         Key: key,
         Body: fileBuffer,
-        ContentType: contentType
+        ContentType: contentType,
+        ACL: 'public-read'
       };
 
       const data = await s3.upload(params).promise();
